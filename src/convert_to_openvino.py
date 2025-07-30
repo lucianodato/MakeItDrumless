@@ -1,4 +1,3 @@
-import os
 import torch
 import openvino as ov
 import yaml
@@ -30,8 +29,8 @@ def export_to_openvino(model, example_input, output_path="ov_model/model.xml", c
     except Exception as e:
         print(f"❌ torch.jit.script failed: {e}\nFalling back to torch.jit.trace (may be less robust for dynamic input shapes)")
         traced = torch.jit.trace(model, example_input)
-    ov_model = ov.convert_model(traced)
-    ov.save_model(ov_model, output_path)
+    ov_model = ov.convert_model(traced, example_input=example_input)
+    ov.save_model(ov_model, output_path, compress_to_fp16=compress_fp16)
     print(f"✅ OpenVINO model saved to {output_path} (+ .bin).")
 
 def run_inference_openvino(xml_path, input_tensor):

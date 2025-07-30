@@ -11,7 +11,9 @@ A Python script to automate downloading a YouTube song, removing drums, and gene
 ## Usage
 
 ```bash
-python main.py "https://www.youtube.com/watch?v=XXXX"
+cd MakeItDrumless
+python -m src.convert_to_openvino
+python -m src.main "https://www.youtube.com/watch?v=XXXX"
 ```
 
 ## Requirements
