@@ -5,7 +5,7 @@ A Python script to automate downloading a YouTube song, removing drums, and gene
 ## Features
 
 - Downloads audio from YouTube
-- Splits stems using Spleeter
+- Splits stems using SCNet
 - Removes drums and exports the final mix
 
 ## Usage
