@@ -240,58 +240,103 @@ def download_audio(link: str, output_folder: str = "temp") -> str:
 # ----------------------------------------
 # Separate stems using SCnet
 def separate_stems_scnet(input_wav, output_folder="separated_scnet"):
+    import openvino as ov
+    import soundfile as sf
+    import numpy as np
+    from scipy.signal import resample_poly
+
     os.makedirs(output_folder, exist_ok=True)
-    model_checkpoint = os.path.abspath(os.path.join("checkpoints", "SCNet-large.th"))
-    config = os.path.abspath(os.path.join("checkpoints", "config.yaml"))
-    if not os.path.exists(model_checkpoint):
-        print(f"❌ SCNet checkpoint not found at {model_checkpoint}. Please ensure it is downloaded.")
+    model_path = os.path.abspath(os.path.join("ov_model", "model.xml"))
+    if not os.path.exists(model_path):
+        print(f"❌ OpenVINO model not found at {model_path}. Please export it first.")
         sys.exit(1)
-    if not os.path.exists(config):
-        print(f"❌ SCNet config file not found at {config}. Please ensure it is downloaded.")
-        sys.exit(1)
-    print("🎚️ Running SCNet inference using official CLI...")
-    # Only run inference if stems are not already present
     if os.path.isfile(input_wav):
-        input_dir = os.path.abspath(os.path.dirname(input_wav))
         track = os.path.splitext(os.path.basename(input_wav))[0]
-        expected_stem = os.path.join(output_folder, track, "vocals.wav")
+        output_dir = os.path.join(output_folder, track)
+        expected_stem = os.path.join(output_dir, "vocals.wav")
         if os.path.exists(expected_stem):
             print(f"✅ Stems already separated for {track}.")
-            return os.path.join(output_folder, track)
+            return output_dir
     else:
-        input_dir = os.path.abspath(input_wav)
-        track = None
-    output_dir_abs = os.path.abspath(output_folder)
-    scnet_dir = os.path.join(os.getcwd(), "SCNet")
-    start_time = time.time()
-    command = [
-        sys.executable, "-m", "scnet.inference",
-        "--input_dir", input_dir,
-        "--output_dir", output_dir_abs,
-        "--checkpoint_path", model_checkpoint,
-        "--config_path", config
-    ]
-    print(f"Running SCNet inference... (this may take a while)")
+        print(f"❌ Input wav not found: {input_wav}")
+        sys.exit(1)
+
+    # Load audio
+    audio, sr = sf.read(input_wav)
+    if audio.ndim == 1:
+        audio = np.stack([audio, audio], axis=1)  # mono to stereo
+    elif audio.shape[1] == 1:
+        audio = np.repeat(audio, 2, axis=1)
+    input_sr = sr
+    target_sr = 44100
+    if sr != target_sr:
+        print(f"Resampling from {sr} Hz to {target_sr} Hz for model inference...")
+        audio = resample_poly(audio, target_sr, sr, axis=0)
+        sr = target_sr
+
+    # Pad or trim to multiple of segment length (11s)
+    segment_len = 11 * target_sr
+    n_channels = 2
+    n_samples = audio.shape[0]
+    if n_samples < segment_len:
+        pad = segment_len - n_samples
+        audio = np.pad(audio, ((0, pad), (0, 0)), mode='constant')
+    elif n_samples % segment_len != 0:
+        pad = segment_len - (n_samples % segment_len)
+        audio = np.pad(audio, ((0, pad), (0, 0)), mode='constant')
+
+    # Prepare input for model: (batch, channels, samples)
+    audio = audio.T  # (channels, samples)
+    audio = np.expand_dims(audio, 0).astype(np.float32)  # (1, 2, N)
+
+    # Load OpenVINO model
+    core = ov.Core()
+    model = core.read_model(model_path)
+    compiled = core.compile_model(model, device_name="CPU")
+    input_name = compiled.input(0).get_any_name()
+
+    # Run inference in segments
+    outputs = {k: [] for k in ['drums', 'bass', 'other', 'vocals']}
+    n_segments = audio.shape[2] // segment_len
+    print(f"🎚️ Running SCNet inference with OpenVINO on {n_segments} segment(s)...")
+    import threading, time
     stop_event = threading.Event()
     spinner_thread = threading.Thread(target=spinner, args=("SCNet is processing", stop_event))
+    start_time = time.time()
     spinner_thread.start()
     try:
-        subprocess.run(command, check=True, cwd=scnet_dir, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        for i in range(n_segments):
+            seg = audio[:, :, i*segment_len:(i+1)*segment_len]
+            result = compiled({input_name: seg})
+            # Output is a dict: {output_name: np.ndarray}
+            # Assume output order: [drums, bass, other, vocals]
+            out = list(result.values())[0]  # (1, 4, 2, segment_len)
+            for idx, k in enumerate(['drums', 'bass', 'other', 'vocals']):
+                outputs[k].append(out[0, idx])
     finally:
         stop_event.set()
         spinner_thread.join()
     elapsed = time.time() - start_time
     print(f"⏱️  SCNet inference completed in {elapsed:.2f} seconds.")
-    if track:
-        return os.path.join(output_folder, track)
-    else:
-        return output_folder
+
+    # Concatenate segments and save stems
+    os.makedirs(output_dir, exist_ok=True)
+    for k in outputs:
+        stem = np.concatenate(outputs[k], axis=1)  # (2, N)
+        stem = stem.T  # (N, 2)
+        # Trim to original length (in model's sample rate)
+        stem = stem[:n_samples, :]
+        # Always save at model's sample rate (44100 Hz), skip resampling
+        out_path = os.path.join(output_dir, f"{k}.wav")
+        sf.write(out_path, stem, target_sr)
+        print(f"✅ Saved {k} stem: {out_path}")
+    return output_dir
 
 # ----------------------------------------
 # Main pipeline
 if __name__ == "__main__":
-    print("\n=== Drumless Track Generator ===\n")
-    parser = argparse.ArgumentParser(description="Drumless Track Generator")
+    print("\n=== MakeItDrumless ===\n")
+    parser = argparse.ArgumentParser(description="MakeItDrumless")
     parser.add_argument("url", help="YouTube URL")
     args = parser.parse_args()
     url = args.url

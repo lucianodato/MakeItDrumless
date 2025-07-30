@@ -65,3 +65,6 @@ SCNet/
 # SCNet models
 checkpoints/config.yaml
 checkpoints/*.th
+
+# OpenVINO models
+ov_model/model.*
