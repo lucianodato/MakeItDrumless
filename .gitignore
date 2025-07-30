@@ -1,0 +1,67 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+.venv/
+env/
+venv/
+
+# Audio outputs
+*.mp3
+*.wav
+*.flac
+*.ogg
+
+# Temporary / cache files
+*.log
+*.tmp
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# VSCode settings
+.vscode/
+
+# Python egg info
+*.egg-info/
+dist/
+build/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Test / coverage files
+.coverage
+htmlcov/
+.tox/
+.pytest_cache/
+.cache/
+nosetests.xml
+coverage.xml
+*.cover
+
+# pip logs
+pip-log.txt
+
+# System files
+ehthumbs.db
+desktop.ini
+
+# Temporary processing folders
+temp/
+tmp/
+output/
+separated_scnet/
+
+# Ffmpeg
+ffmpeg/
+
+# SCnet folder
+SCNet/
+
+# SCNet models
+checkpoints/config.yaml
+checkpoints/*.th

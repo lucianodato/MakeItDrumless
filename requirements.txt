@@ -1,0 +1,14 @@
+yt_dlp
+audioop-lts
+pydub
+torch>=2.1.2
+torchaudio>=2.1.2
+mutagen
+requests
+accelerate
+julius
+ml_collections
+numpy
+tqdm
+einops
+soundfile
