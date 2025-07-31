@@ -67,4 +67,4 @@ checkpoints/config.yaml
 checkpoints/*.th
 
 # OpenVINO models
-ov_model/model.*
+ov_model/
