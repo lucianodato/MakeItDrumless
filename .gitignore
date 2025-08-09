@@ -57,7 +57,7 @@ output/
 separated_scnet/
 
 # Ffmpeg
-ffmpeg/
+ffmpeg_bin/
 
 # SCnet folder
 SCNet/

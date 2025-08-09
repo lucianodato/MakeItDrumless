@@ -1,11 +1,12 @@
-yt_dlp
-audioop-lts
 pydub
-torch>=2.1.2
-torchaudio>=2.1.2
 mutagen
+yt-dlp
+ml_collections
 requests
+torch
 soundfile
+accelerate
+PyAudio
+julius
 openvino
 scipy
-PyYAML
