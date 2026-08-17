@@ -6,14 +6,33 @@ import shutil
 from pathlib import Path
 
 from makeitdrumless.msst_integration.models import (
-    list_available_models,
+    list_available_models as list_available_msst_models,
     download_model_preset,
-    MODEL_REGISTRY,
+    MODEL_REGISTRY as MSST_MODEL_REGISTRY,
 )
 from makeitdrumless.msst_integration.inference import separate_stems_msst
+from makeitdrumless.mlx_integration.models import (
+    MLX_MODEL_REGISTRY,
+    list_available_mlx_models,
+    is_mlx_model,
+)
+from makeitdrumless.mlx_integration.inference import separate_stems_mlx
 from makeitdrumless.audio.downloader import get_audio_input, get_default_output_base
 from makeitdrumless.audio.processing import mix_stems_without_drums, set_mp3_metadata
 from makeitdrumless.ffmpeg.manager import setup_ffmpeg_binary
+
+
+def list_all_models():
+    """Prints all available models for both MLX and MSST PyTorch engines."""
+    print("\n" + "=" * 90)
+    print("🍏 APPLE MLX NATIVE MODELS (High Speed Metal Acceleration on Apple Silicon)")
+    print("=" * 90)
+    list_available_mlx_models()
+    
+    print("=" * 90)
+    print("🔥 MSST PYTORCH MODELS (SCNet & DualPathRNN Architectures)")
+    print("=" * 90)
+    list_available_msst_models()
 
 
 def main():
@@ -21,27 +40,24 @@ def main():
 
     parser = argparse.ArgumentParser(
         prog="makeitdrumless",
-        description="Generate high-quality drumless backing tracks from YouTube videos or local audio files with Apple Silicon MPS acceleration.",
+        description="Generate high-quality drumless backing tracks from YouTube videos or local audio files with Apple MLX or PyTorch MPS acceleration.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Generate drumless track from YouTube URL (saves to ~/Music/MakeItDrumless/<Song Title>/):
+  # Generate drumless track using default high-quality model:
   makeitdrumless "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 
-  # Process a local MP3 or WAV file:
-  makeitdrumless "/path/to/my_song.mp3"
+  # Fast MLX inference with Demucs v4 FT (SDR 10.02, matches SCNet XL):
+  makeitdrumless "/path/to/song.mp3" --model mlx_demucs_ft
 
-  # Use a specific model preset (e.g. BS-Conformer or fast SCNet Small):
-  makeitdrumless "/path/to/my_song.mp3" --model bs_conformer
+  # MLX BS-RoFormer (SDR 10.53, exceeds SCNet XL):
+  makeitdrumless "/path/to/song.mp3" --model mlx_roformer
 
-  # Save output to a custom directory:
-  makeitdrumless "https://www.youtube.com/watch?v=dQw4w9WgXcQ" -o ~/Desktop/MyTracks
+  # Classic PyTorch SCNet Large:
+  makeitdrumless "/path/to/song.mp3" --model scnet_large_starrytong
 
-  # List all available pretrained models:
+  # List all available models (MLX and PyTorch):
   makeitdrumless --list-models
-
-  # Force re-running separation even if stems already exist:
-  makeitdrumless "/path/to/my_song.mp3" --force
         """
     )
 
@@ -53,13 +69,19 @@ Examples:
     parser.add_argument(
         "--model", "-m",
         default="scnet_large_starrytong",
-        help="Model preset name (default: 'scnet_large_starrytong'). Run with --list-models to see all options."
+        help="Model preset name (e.g. 'scnet_large_starrytong', 'mlx_demucs_ft', 'mlx_roformer'). Run --list-models to see all."
+    )
+    parser.add_argument(
+        "--engine", "-e",
+        default="auto",
+        choices=["auto", "mlx", "msst"],
+        help="Inference engine ('auto' detects by model name, 'mlx' for Apple MLX, 'msst' for PyTorch MSST)."
     )
     parser.add_argument(
         "--device", "-d",
         default="auto",
         choices=["auto", "mps", "cuda", "cpu"],
-        help="Compute device for inference ('auto' selects Apple Silicon MPS on Mac, CUDA on NVIDIA, or CPU)."
+        help="Compute device for PyTorch MSST ('auto' selects Apple Silicon MPS on Mac, CUDA on NVIDIA, or CPU)."
     )
     parser.add_argument(
         "--output-dir", "-o",
@@ -68,7 +90,7 @@ Examples:
     parser.add_argument(
         "--list-models", "-l",
         action="store_true",
-        help="List all available model presets, descriptions, and download status."
+        help="List all available model presets (MLX & MSST), descriptions, and download status."
     )
     parser.add_argument(
         "--download-model",
@@ -91,7 +113,12 @@ Examples:
     parser.add_argument(
         "--overlap",
         type=int,
-        help="Chunk overlap factor (e.g. 2 or 4). Default is defined in model config."
+        help="Chunk overlap factor (e.g. 2, 4, 8). Default is defined in model config."
+    )
+    parser.add_argument(
+        "--batch-size", "-b",
+        type=int,
+        help="Batch size for chunk inference (e.g. 1, 2, 4, 8)."
     )
     parser.add_argument(
         "--force", "-f",
@@ -103,21 +130,32 @@ Examples:
 
     # 1. Handle --list-models
     if args.list_models:
-        list_available_models()
+        list_all_models()
         return
 
     # 2. Handle --download-model
     if args.download_model:
         model_name = args.download_model.strip()
-        print(f"📥 Downloading model preset: {model_name}...")
-        try:
-            m_type, cfg_p, ckpt_p = download_model_preset(model_name)
-            print(f"\n🎉 Successfully downloaded and cached '{model_name}'!")
-            print(f"  - Config:     {cfg_p}")
-            print(f"  - Checkpoint: {ckpt_p}")
-        except Exception as e:
-            print(f"❌ Failed to download model: {e}")
-            sys.exit(1)
+        if is_mlx_model(model_name):
+            print(f"📥 Preparing MLX model preset: {model_name}...")
+            try:
+                from demucs_mlx import Separator
+                info = MLX_MODEL_REGISTRY[model_name]
+                Separator(model=info["demucs_model"])
+                print(f"\n🎉 Successfully downloaded and cached MLX model '{model_name}' ({info['demucs_model']})!")
+            except Exception as e:
+                print(f"❌ Failed to download MLX model: {e}")
+                sys.exit(1)
+        else:
+            print(f"📥 Downloading MSST model preset: {model_name}...")
+            try:
+                m_type, cfg_p, ckpt_p = download_model_preset(model_name)
+                print(f"\n🎉 Successfully downloaded and cached '{model_name}'!")
+                print(f"  - Config:     {cfg_p}")
+                print(f"  - Checkpoint: {ckpt_p}")
+            except Exception as e:
+                print(f"❌ Failed to download model: {e}")
+                sys.exit(1)
         return
 
     # 3. Setup FFmpeg
@@ -168,22 +206,43 @@ Examples:
                 except Exception:
                     pass
 
-    # 7. Run Stem Separation (stems saved into track_dir/stems_<model>/)
+    # 7. Route engine: Determine MLX vs MSST
+    use_mlx = False
+    if args.engine == "mlx":
+        use_mlx = True
+    elif args.engine == "msst":
+        use_mlx = False
+    else: # auto
+        use_mlx = is_mlx_model(args.model)
+
     model_tag = args.model if not args.checkpoint else os.path.splitext(os.path.basename(args.checkpoint))[0]
     clean_model_tag = "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in model_tag)
     stems_dir = os.path.join(track_dir, f"stems_{clean_model_tag}")
 
-    stems = separate_stems_msst(
-        input_audio_path=final_original_wav,
-        output_folder=stems_dir,
-        model_preset=args.model,
-        config_path=args.config,
-        checkpoint_path=args.checkpoint,
-        chunk_size=args.chunk_size,
-        overlap=args.overlap,
-        device_name=args.device,
-        force=args.force,
-    )
+    if use_mlx:
+        # Run Apple MLX Separation
+        mlx_model_preset = args.model if is_mlx_model(args.model) else "mlx_demucs_ft"
+        stems = separate_stems_mlx(
+            input_audio_path=final_original_wav,
+            output_folder=stems_dir,
+            model_preset=mlx_model_preset,
+            overlap=args.overlap,
+            batch_size=args.batch_size,
+            force=args.force,
+        )
+    else:
+        # Run PyTorch MSST Separation
+        stems = separate_stems_msst(
+            input_audio_path=final_original_wav,
+            output_folder=stems_dir,
+            model_preset=args.model,
+            config_path=args.config,
+            checkpoint_path=args.checkpoint,
+            chunk_size=args.chunk_size,
+            overlap=args.overlap,
+            device_name=args.device,
+            force=args.force,
+        )
 
     # 8. Mix non-drum stems into drumless MP3
     out_mp3_path = os.path.join(track_dir, f"{safe_title} (Drumless).mp3")

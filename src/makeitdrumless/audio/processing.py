@@ -8,6 +8,16 @@ from mutagen.id3 import ID3, TIT2, TPE1, COMM
 DRUM_STEM_NAMES = {"drums", "drum", "kick", "snare", "hh", "toms", "cymbals", "percussion"}
 
 
+def is_drum_stem(name: str) -> bool:
+    clean = name.lower().replace("-", "_").replace(" ", "_")
+    if clean.startswith("no_") or "no_drum" in clean or "nodrum" in clean:
+        return False
+    for drum_word in ["drum", "kick", "snare", "hh", "toms", "cymbals", "percussion", "hihat"]:
+        if drum_word in clean:
+            return True
+    return False
+
+
 def mix_stems_without_drums(
     stems_input: Union[str, Dict[str, str]],
     output_path: str,
@@ -40,13 +50,14 @@ def mix_stems_without_drums(
     # Filter out drum stems
     non_drum_stems = {
         name: path for name, path in stem_files.items()
-        if name.lower() not in DRUM_STEM_NAMES and os.path.exists(path)
+        if not is_drum_stem(name) and os.path.exists(path)
     }
 
     if not non_drum_stems:
         print("⚠️  No non-drum stems found. Checking for fallback mix...")
         for name, path in stem_files.items():
-            if "drum" not in name.lower() and os.path.exists(path):
+            clean = name.lower()
+            if not ("drum" in clean and not ("no" in clean)) and os.path.exists(path):
                 non_drum_stems[name] = path
 
     if not non_drum_stems:
@@ -66,6 +77,8 @@ def mix_stems_without_drums(
     if mixed is not None:
         out_dir = os.path.dirname(os.path.abspath(output_path))
         os.makedirs(out_dir, exist_ok=True)
+        # Normalize to standard commercial listening volume with 0.1dB headroom
+        mixed = mixed.normalize(headroom=0.1)
         mixed.export(output_path, format="mp3", bitrate="320k")
         print(f"✅ Final drumless track saved to: {output_path}")
         return output_path

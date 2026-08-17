@@ -38,3 +38,6 @@ Thumbs.db
 
 # Local submodules / clones
 msst/
+
+# Lock files
+uv.lock

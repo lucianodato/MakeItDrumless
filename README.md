@@ -111,9 +111,20 @@ makeitdrumless "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --model scnet_small
 
 ## 🏆 Supported Model Presets
 
+### 🍏 Apple MLX Models (Ultra-Fast Metal Acceleration on Apple Silicon via `demucs-mlx`)
+
+| Preset Name | Underlying Model | Target Stems | SDR Quality | Notes |
+|---|---|---|---|---|
+| `mlx_demucs` *(MLX Default)* | HTDemucs v4 | 4 stems (`drums`, `vocals`, `bass`, `other`) | **9.40** | Blazing Fast (~50s full song), bit-exact |
+| `mlx_demucs_ft` | HTDemucs v4 FT | 4 stems (`drums`, `vocals`, `bass`, `other`) | **10.02** | 4-model fine-tuned ensemble (matches SCNet XL) |
+| `mlx_demucs_6s` | HTDemucs v4 6s | 6 stems | **8.50** | Drums, Bass, Vocals, Guitar, Piano, Other |
+| `mlx_demucs_mmi` | HDemucs v3 MMI | 4 stems | **8.88** | Demucs v3 MMI model |
+
+### 🔥 MSST PyTorch Models (SCNet & DualPathRNN Architectures)
+
 | Preset Name | Architecture | Stems | Notes |
 |---|---|---|---|
-| `scnet_large_starrytong` *(Default)* | SCNet | 4 stems | High SDR (9.70) by starrytong |
+| `scnet_large_starrytong` *(MSST Default)* | SCNet | 4 stems | High SDR (9.70) by starrytong |
 | `scnet_xl` | SCNet | 4 stems | State-of-the-Art quality (SDR 10.08) |
 | `scnet_masked_xl` | SCNet | 4 stems | Noise reduction mask (SDR 9.82) |
 | `scnet_large` | SCNet | 4 stems | Large SCNet architecture (SDR 9.32) |

@@ -103,7 +103,8 @@ def separate_stems_msst(
 
     mpl_dir = os.path.join(tempfile.gettempdir(), "makeitdrumless", "mpl_config")
     os.environ["MPLCONFIGDIR"] = mpl_dir
-    os.environ["PYTORCH_MPS_HIGH_WATERMARK_RATIO"] = "0.7"
+    os.environ["PYTORCH_MPS_HIGH_WATERMARK_RATIO"] = "0.0"
+    os.environ["PYTORCH_MPS_LOW_WATERMARK_RATIO"] = "0.0"
     os.makedirs(mpl_dir, exist_ok=True)
 
     # Instantiate model and load configuration
