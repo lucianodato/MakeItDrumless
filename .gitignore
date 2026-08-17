@@ -3,65 +3,38 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-# Virtual environment
+# Virtual environments
 .venv/
 env/
 venv/
 
-# Audio outputs
+# Packaging & build artifacts
+dist/
+build/
+*.egg-info/
+
+# Audio outputs and temp files
 *.mp3
 *.wav
 *.flac
 *.ogg
-
-# Temporary / cache files
-*.log
 *.tmp
-*.swp
-*.swo
-.DS_Store
-Thumbs.db
+*.log
 
-# VSCode settings
-.vscode/
-
-# Python egg info
-*.egg-info/
-dist/
-build/
-
-# Jupyter Notebook checkpoints
-.ipynb_checkpoints/
-
-# Test / coverage files
-.coverage
-htmlcov/
-.tox/
-.pytest_cache/
+# Caches and runtime folders
 .cache/
-nosetests.xml
-coverage.xml
-*.cover
-
-# pip logs
-pip-log.txt
-
-# System files
-ehthumbs.db
-desktop.ini
-
-# Temporary processing folders
+.pytest_cache/
 temp/
 tmp/
 output/
-separated_scnet/
-
-# Ffmpeg
+separated_msst/
+checkpoints/
 ffmpeg_bin/
 
-# SCnet folder
-SCNet/
+# macOS / OS files
+.DS_Store
+Thumbs.db
+.vscode/
 
-# SCNet models
-checkpoints/config.yaml
-checkpoints/*.th
+# Local submodules / clones
+msst/

@@ -5,22 +5,25 @@ from urllib.request import urlretrieve
 import platform
 import sys
 import threading
-import time
+from pathlib import Path
 
-from src.utils.spinner import spinner
+from makeitdrumless.cli_utils.spinner import spinner
 
-def is_ffmpeg_installed():
+
+def is_ffmpeg_installed() -> bool:
     try:
         subprocess.run(["ffmpeg", "-version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return True
     except Exception:
         return False
 
-def download_ffmpeg_windows(dest_folder="ffmpeg_bin", project_root="."):
 
-    dest_folder_abs = os.path.join(project_root, dest_folder)
+def download_ffmpeg_windows(dest_folder: str | None = None) -> str:
+    if dest_folder is None:
+        dest_folder = str(Path.home() / ".cache" / "makeitdrumless" / "ffmpeg_bin")
+
+    dest_folder_abs = os.path.abspath(dest_folder)
     # Check if ffmpeg.exe already exists in the expected location
-    expected_bin_dir = None
     if os.path.exists(dest_folder_abs):
         for d in os.listdir(dest_folder_abs):
             if d.startswith("ffmpeg"):
@@ -30,19 +33,17 @@ def download_ffmpeg_windows(dest_folder="ffmpeg_bin", project_root="."):
                     print(f"✅ ffmpeg already present at {ffmpeg_exe}")
                     return bin_dir
 
-    print("⚙️  ffmpeg not found, downloading portable version...")
+    print("⚙️  ffmpeg not found, downloading portable version for Windows...")
     url = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
     zip_path = os.path.join(dest_folder_abs, "ffmpeg.zip")
     os.makedirs(dest_folder_abs, exist_ok=True)
-    
+
     stop_event = threading.Event()
     spinner_thread = threading.Thread(target=spinner, args=("Downloading ffmpeg", stop_event))
     spinner_thread.start()
     try:
         if not os.path.exists(zip_path):
             urlretrieve(url, zip_path)
-        else:
-            print(f"⚠️  ffmpeg zip already downloaded at {zip_path}")
     finally:
         stop_event.set()
         spinner_thread.join()
@@ -51,7 +52,8 @@ def download_ffmpeg_windows(dest_folder="ffmpeg_bin", project_root="."):
     with zipfile.ZipFile(zip_path, "r") as zip_ref:
         zip_ref.extractall(dest_folder_abs)
 
-    os.remove(zip_path)
+    if os.path.exists(zip_path):
+        os.remove(zip_path)
 
     extracted_dirs = [d for d in os.listdir(dest_folder_abs) if d.startswith("ffmpeg")]
     if not extracted_dirs:
@@ -63,17 +65,18 @@ def download_ffmpeg_windows(dest_folder="ffmpeg_bin", project_root="."):
     print(f"✅ ffmpeg downloaded and extracted to {ffmpeg_root}")
     return ffmpeg_bin
 
-def setup_ffmpeg_binary(project_root="."):
+
+def setup_ffmpeg_binary(project_root: str | None = None) -> str | None:
     if is_ffmpeg_installed():
-        print("✅ ffmpeg found in system PATH.")
         return None
     else:
         if platform.system() == "Windows":
-            ffmpeg_bin = download_ffmpeg_windows(project_root=project_root)
+            ffmpeg_bin = download_ffmpeg_windows()
             os.environ["PATH"] = ffmpeg_bin + os.pathsep + os.environ.get("PATH", "")
             os.environ["FFMPEG_BINARY"] = os.path.join(ffmpeg_bin, "ffmpeg.exe")
             return os.environ["FFMPEG_BINARY"]
         else:
-            print("❌ ffmpeg not found and automatic download only implemented for Windows.")
-            print("Please install ffmpeg manually and add it to PATH.")
+            print("❌ ffmpeg not found in PATH.")
+            print("💡 On macOS, run: brew install ffmpeg")
+            print("💡 On Linux, run: sudo apt install ffmpeg")
             sys.exit(1)

@@ -1,7 +1,8 @@
 import threading
 import time
 
-def spinner(msg, stop_event):
+
+def spinner(msg: str, stop_event: threading.Event):
     spinner_chars = "|/-\\"
     idx = 0
     while not stop_event.is_set():
@@ -9,4 +10,3 @@ def spinner(msg, stop_event):
         idx += 1
         time.sleep(0.1)
     print("\r" + " " * (len(msg) + 2) + "\r", end="", flush=True)
-

@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "makeitdrumless"
+version = "0.1.0"
+description = "Automated high-quality drumless backing track generator powered by MSST and Apple Silicon MPS acceleration"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "Luciano Dato" }
+]
+keywords = ["drums", "drumless", "source-separation", "msst", "audio", "apple-silicon", "mps", "music"]
+
+dependencies = [
+    "torch>=2.0.0",
+    "torchaudio",
+    "numpy",
+    "scipy",
+    "soundfile",
+    "librosa",
+    "tqdm",
+    "pydub",
+    "mutagen",
+    "yt-dlp",
+    "requests",
+    "ml_collections",
+    "omegaconf",
+    "einops",
+    "rotary_embedding_torch",
+    "timm",
+    "torchmetrics",
+    "julius",
+    "beartype",
+    "matplotlib",
+    "music-source-separation-training @ git+https://github.com/lucianodato/Music-Source-Separation-Training.git",
+]
+
+[project.scripts]
+makeitdrumless = "makeitdrumless.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
