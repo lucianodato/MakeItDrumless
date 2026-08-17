@@ -47,7 +47,7 @@ Now `makeitdrumless` is available everywhere in your terminal!
 
 ### Basic Usage (YouTube URL)
 
-Generates a drumless track using the default model (**SCNet XL**) and Apple Silicon MPS acceleration:
+Generates a drumless track using the default model (**SCNet Large by starrytong**) and Apple Silicon MPS acceleration. All outputs are saved to `~/Music/MakeItDrumless/<Song Title>/`:
 
 ```bash
 makeitdrumless "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
@@ -59,10 +59,34 @@ makeitdrumless "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 makeitdrumless "/path/to/my_song.mp3"
 ```
 
-### Specify Output Directory
+### Output Folder Structure
+
+Every processed song automatically generates a dedicated folder in `~/Music/MakeItDrumless/`:
+
+```text
+~/Music/MakeItDrumless/
+└── Bohemian Rhapsody/
+    ├── Bohemian Rhapsody (Drumless).mp3       # Final drumless backing track
+    ├── Bohemian Rhapsody (Original).wav       # Downloaded / converted original audio
+    └── stems_scnet_large_starrytong/          # Extracted individual stems
+        ├── vocals.wav
+        ├── bass.wav
+        ├── drums.wav
+        └── other.wav
+```
+
+### Specify a Custom Output Directory
 
 ```bash
-makeitdrumless "/path/to/my_song.mp3" -o ~/Music/BackingTracks
+makeitdrumless "/path/to/my_song.mp3" -o ~/Desktop/MyTracks
+```
+
+### Force Re-Separation
+
+If you want to re-run separation and overwrite existing stems:
+
+```bash
+makeitdrumless "/path/to/my_song.mp3" --force
 ```
 
 ### List Available Models
@@ -81,14 +105,6 @@ makeitdrumless "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --model bs_conforme
 
 # Using lightweight SCNet Small (~42MB)
 makeitdrumless "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --model scnet_small
-```
-
-### Save Individual Stems
-
-If you want to keep the individual separated stems (`vocals.wav`, `bass.wav`, `other.wav`, `drums.wav`):
-
-```bash
-makeitdrumless "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --save-stems ./my_stems
 ```
 
 ---

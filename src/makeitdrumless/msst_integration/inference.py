@@ -82,7 +82,7 @@ def separate_stems_msst(
     track_name = os.path.splitext(os.path.basename(input_audio_path))[0]
     
     if output_folder:
-        track_output_dir = os.path.abspath(os.path.join(output_folder, f"{track_name}_{clean_model_tag}"))
+        track_output_dir = os.path.abspath(output_folder)
     else:
         track_output_dir = os.path.join(tempfile.gettempdir(), "makeitdrumless", "separated", f"{track_name}_{clean_model_tag}")
     os.makedirs(track_output_dir, exist_ok=True)
@@ -103,7 +103,7 @@ def separate_stems_msst(
 
     mpl_dir = os.path.join(tempfile.gettempdir(), "makeitdrumless", "mpl_config")
     os.environ["MPLCONFIGDIR"] = mpl_dir
-    os.environ["PYTORCH_MPS_HIGH_WATERMARK_RATIO"] = "0.0"
+    os.environ["PYTORCH_MPS_HIGH_WATERMARK_RATIO"] = "0.7"
     os.makedirs(mpl_dir, exist_ok=True)
 
     # Instantiate model and load configuration
@@ -112,7 +112,11 @@ def separate_stems_msst(
 
     model, config = get_model_from_config(model_type, config_path)
 
-    # Configure chunk size and overlap for memory efficiency
+    # Configure batch size, chunk size and overlap for memory efficiency on Apple Silicon
+    if device.type == "mps":
+        if hasattr(config, "inference"):
+            config.inference.batch_size = 1
+
     if chunk_size is not None:
         if hasattr(config, "audio"):
             config.audio.chunk_size = chunk_size

@@ -2,6 +2,8 @@ import os
 import sys
 import argparse
 import time
+import shutil
+from pathlib import Path
 
 from makeitdrumless.msst_integration.models import (
     list_available_models,
@@ -9,7 +11,7 @@ from makeitdrumless.msst_integration.models import (
     MODEL_REGISTRY,
 )
 from makeitdrumless.msst_integration.inference import separate_stems_msst
-from makeitdrumless.audio.downloader import get_audio_input
+from makeitdrumless.audio.downloader import get_audio_input, get_default_output_base
 from makeitdrumless.audio.processing import mix_stems_without_drums, set_mp3_metadata
 from makeitdrumless.ffmpeg.manager import setup_ffmpeg_binary
 
@@ -23,7 +25,7 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Generate drumless track from YouTube URL with default model (SCNet XL):
+  # Generate drumless track from YouTube URL (saves to ~/Music/MakeItDrumless/<Song Title>/):
   makeitdrumless "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 
   # Process a local MP3 or WAV file:
@@ -32,14 +34,14 @@ Examples:
   # Use a specific model preset (e.g. BS-Conformer or fast SCNet Small):
   makeitdrumless "/path/to/my_song.mp3" --model bs_conformer
 
-  # Save the output MP3 into a specific folder:
-  makeitdrumless "https://www.youtube.com/watch?v=dQw4w9WgXcQ" -o ~/Music
+  # Save output to a custom directory:
+  makeitdrumless "https://www.youtube.com/watch?v=dQw4w9WgXcQ" -o ~/Desktop/MyTracks
 
   # List all available pretrained models:
   makeitdrumless --list-models
 
-  # Pre-download a model checkpoint:
-  makeitdrumless --download-model bs_conformer
+  # Force re-running separation even if stems already exist:
+  makeitdrumless "/path/to/my_song.mp3" --force
         """
     )
 
@@ -61,13 +63,7 @@ Examples:
     )
     parser.add_argument(
         "--output-dir", "-o",
-        default=".",
-        help="Output directory for generated drumless MP3 (default: current working directory)."
-    )
-    parser.add_argument(
-        "--save-stems",
-        metavar="DIR",
-        help="Optional directory to save all individual separated stems (vocals, bass, other, drums)."
+        help="Custom base output directory (default: ~/Music/MakeItDrumless)."
     )
     parser.add_argument(
         "--list-models", "-l",
@@ -135,23 +131,14 @@ Examples:
 
     start_total_time = time.time()
 
-    # 5. Acquire Audio Input (Download or convert local file)
-    audio_wav, info = get_audio_input(args.input)
+    # 5. Determine Base Output Directory (~/Music/MakeItDrumless by default)
+    base_output_dir = os.path.abspath(args.output_dir or get_default_output_base())
+    os.makedirs(base_output_dir, exist_ok=True)
 
-    # 6. Run Stem Separation with MSST & Apple Silicon MPS
-    stems = separate_stems_msst(
-        input_audio_path=audio_wav,
-        output_folder=args.save_stems,
-        model_preset=args.model,
-        config_path=args.config,
-        checkpoint_path=args.checkpoint,
-        chunk_size=args.chunk_size,
-        overlap=args.overlap,
-        device_name=args.device,
-        force=args.force,
-    )
+    # 6. Acquire Audio Input (Download or convert)
+    initial_audio_wav, info = get_audio_input(args.input, output_folder=base_output_dir)
 
-    # 7. Mix non-drum stems into drumless backing track
+    # Extract clean track title
     out_title = None
     out_artist = None
     if info:
@@ -161,21 +148,55 @@ Examples:
             out_artist, out_title = out_title.split(' - ', 1)
 
     if out_title:
-        # Sanitize filename
         safe_title = "".join(c for c in out_title if c not in r'\/:*?"<>|').strip()
-        out_filename = f"{safe_title} (Drumless).mp3"
     else:
-        out_filename = os.path.splitext(os.path.basename(audio_wav))[0] + " (Drumless).mp3"
+        raw_name = os.path.splitext(os.path.basename(initial_audio_wav))[0].replace(" (Original)", "")
+        safe_title = "".join(c for c in raw_name if c not in r'\/:*?"<>|').strip()
 
-    output_dir_abs = os.path.abspath(args.output_dir)
-    output_filepath = os.path.join(output_dir_abs, out_filename)
+    # Create dedicated song output directory: ~/Music/MakeItDrumless/<Safe Title>/
+    track_dir = os.path.join(base_output_dir, safe_title)
+    os.makedirs(track_dir, exist_ok=True)
 
-    mix_stems_without_drums(stems, output_filepath)
-    set_mp3_metadata(output_filepath, info, model_name=args.model)
+    # Move/place original WAV inside the song's folder
+    final_original_wav = os.path.join(track_dir, f"{safe_title} (Original).wav")
+    if os.path.abspath(initial_audio_wav) != os.path.abspath(final_original_wav):
+        if not os.path.exists(final_original_wav) or args.force:
+            shutil.copy2(initial_audio_wav, final_original_wav)
+            if os.path.dirname(os.path.abspath(initial_audio_wav)) == base_output_dir:
+                try:
+                    os.remove(initial_audio_wav)
+                except Exception:
+                    pass
+
+    # 7. Run Stem Separation (stems saved into track_dir/stems_<model>/)
+    model_tag = args.model if not args.checkpoint else os.path.splitext(os.path.basename(args.checkpoint))[0]
+    clean_model_tag = "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in model_tag)
+    stems_dir = os.path.join(track_dir, f"stems_{clean_model_tag}")
+
+    stems = separate_stems_msst(
+        input_audio_path=final_original_wav,
+        output_folder=stems_dir,
+        model_preset=args.model,
+        config_path=args.config,
+        checkpoint_path=args.checkpoint,
+        chunk_size=args.chunk_size,
+        overlap=args.overlap,
+        device_name=args.device,
+        force=args.force,
+    )
+
+    # 8. Mix non-drum stems into drumless MP3
+    out_mp3_path = os.path.join(track_dir, f"{safe_title} (Drumless).mp3")
+
+    mix_stems_without_drums(stems, out_mp3_path)
+    set_mp3_metadata(out_mp3_path, info, model_name=args.model)
 
     total_elapsed = time.time() - start_total_time
-    print(f"\n🎉 All done in {total_elapsed:.1f}s! Check your drumless track at:")
-    print(f"👉 {output_filepath}\n")
+    print(f"\n🎉 All done in {total_elapsed:.1f}s!")
+    print(f"📁 Track Folder: {track_dir}")
+    print(f"  🎵 Drumless MP3:   {out_mp3_path}")
+    print(f"  🎙️ Original Audio:  {final_original_wav}")
+    print(f"  🎛️ Separated Stems: {stems_dir}\n")
 
 
 if __name__ == "__main__":

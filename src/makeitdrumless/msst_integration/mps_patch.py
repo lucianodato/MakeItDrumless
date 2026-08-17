@@ -22,19 +22,20 @@ def patch_dualpath_rnn():
             return
 
         def patched_forward(self, x):
-            # x shape: (B, C, F, T)
             B, C, F, T = x.shape
-            original_x = x
 
-            # Intra-chunk RNN (over T dimension)
-            x = x.transpose(1, 2).contiguous().view(B * F, C, T).transpose(1, 2)
+            # Process dual-path rnn
+            original_x = x
+            # Frequency-path
+            x = self.norm_layers[0](x)
+            x = x.transpose(1, 3).contiguous().view(B * T, F, C)
             
-            # Ensure input dtype matches LSTM weight dtype (e.g. float32 vs float16 in autocast)
+            # Sub-batch LSTM processing to prevent massive workspace allocations on MPS/GPU
+            batch_limit = 32
             lstm0_dtype = self.lstm_layers[0].weight_ih_l0.dtype
             if x.dtype != lstm0_dtype:
                 x = x.to(lstm0_dtype)
 
-            batch_limit = 32
             if x.shape[0] > batch_limit:
                 x_chunks = []
                 for b_idx in range(0, x.shape[0], batch_limit):
@@ -48,15 +49,16 @@ def patch_dualpath_rnn():
             if x.dtype != lin0_dtype:
                 x = x.to(lin0_dtype)
             x = self.linear_layers[0](x)
-            x = x.view(B, F, T, C).transpose(1, 3).transpose(2, 3)
+            x = x.view(B, T, F, C).transpose(1, 3)
             x = x.to(original_x.dtype) + original_x
 
-            # Inter-chunk RNN (over F dimension)
             original_x = x
-            x = x.transpose(1, 3).contiguous().view(B * T, C, F).transpose(1, 2)
-
+            # Time-path
+            x = self.norm_layers[1](x)
+            x = x.transpose(1, 2).contiguous().view(B * F, C, T).transpose(1, 2)
+            
             lstm1_dtype = self.lstm_layers[1].weight_ih_l0.dtype
-            if x.dtype != lstm1_dtype:
+            if x.dtype != lst1_dtype if (lst1_dtype := lstm1_dtype) else False:
                 x = x.to(lstm1_dtype)
 
             if x.shape[0] > batch_limit:
@@ -72,8 +74,9 @@ def patch_dualpath_rnn():
             if x.dtype != lin1_dtype:
                 x = x.to(lin1_dtype)
             x = self.linear_layers[1](x)
-            x = x.view(B, T, F, C).transpose(1, 3)
+            x = x.transpose(1, 2).contiguous().view(B, F, C, T).transpose(1, 2)
             x = x.to(original_x.dtype) + original_x
+
             return x
 
         DualPathRNN.forward = patched_forward
@@ -97,6 +100,10 @@ def patch_demix_mps():
         def patched_demix(config, model, mix, device, model_type='scnet', pbar=False):
             dev_type = getattr(device, "type", str(device)).split(":")[0]
             use_amp = getattr(getattr(config, "inference", {}), "amp", True) if hasattr(config, "inference") else True
+
+            # Ensure batch_size is 1 on MPS/CPU to prevent large contiguous allocations
+            if dev_type in ["mps", "cpu"] and hasattr(config, "inference"):
+                config.inference.batch_size = 1
 
             # CUDA benefits greatly from float16 AMP; on MPS/CPU, native float32 is fast and prevents RNN dtype mismatches
             if dev_type == "cuda" and use_amp:
