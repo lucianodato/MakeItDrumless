@@ -18,7 +18,11 @@ from makeitdrumless.mlx_integration.models import (
 )
 from makeitdrumless.mlx_integration.inference import separate_stems_mlx
 from makeitdrumless.audio.downloader import get_audio_input, get_default_output_base
-from makeitdrumless.audio.processing import mix_stems_without_drums, set_mp3_metadata
+from makeitdrumless.audio.processing import (
+    mix_stems_without_drums,
+    set_mp3_metadata,
+    ensemble_stems,
+)
 from makeitdrumless.ffmpeg.manager import setup_ffmpeg_binary
 
 
@@ -121,6 +125,14 @@ Examples:
         help="Batch size for chunk inference (e.g. 1, 2, 4, 8)."
     )
     parser.add_argument(
+        "--ensemble",
+        help="Comma-separated list of models to ensemble (e.g. 'scnet_large_starrytong,mlx_demucs_ft')."
+    )
+    parser.add_argument(
+        "--ensemble-weights",
+        help="Comma-separated weights for ensemble models (e.g. '0.6,0.4'). Defaults to equal weighting."
+    )
+    parser.add_argument(
         "--force", "-f",
         action="store_true",
         help="Force re-running separation and overwrite existing cached stems for this model."
@@ -206,49 +218,99 @@ Examples:
                 except Exception:
                     pass
 
-    # 7. Route engine: Determine MLX vs MSST
-    use_mlx = False
-    if args.engine == "mlx":
-        use_mlx = True
-    elif args.engine == "msst":
-        use_mlx = False
-    else: # auto
-        use_mlx = is_mlx_model(args.model)
+    # 7. Run separation (Ensemble or Single Model)
+    if args.ensemble:
+        ensemble_model_names = [m.strip() for m in args.ensemble.split(",") if m.strip()]
+        if len(ensemble_model_names) < 2:
+            print("⚠️  --ensemble requires at least 2 comma-separated models. Running in single model mode.")
+            ensemble_model_names = [ensemble_model_names[0]]
 
-    model_tag = args.model if not args.checkpoint else os.path.splitext(os.path.basename(args.checkpoint))[0]
-    clean_model_tag = "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in model_tag)
-    stems_dir = os.path.join(track_dir, f"stems_{clean_model_tag}")
+        ensemble_weights = None
+        if args.ensemble_weights:
+            try:
+                ensemble_weights = [float(w.strip()) for w in args.ensemble_weights.split(",") if w.strip()]
+            except ValueError:
+                print("⚠️  Invalid --ensemble-weights. Using equal weights.")
+                ensemble_weights = None
 
-    if use_mlx:
-        # Run Apple MLX Separation
-        mlx_model_preset = args.model if is_mlx_model(args.model) else "mlx_demucs_ft"
-        stems = separate_stems_mlx(
-            input_audio_path=final_original_wav,
-            output_folder=stems_dir,
-            model_preset=mlx_model_preset,
-            overlap=args.overlap,
-            batch_size=args.batch_size,
-            force=args.force,
-        )
+        print(f"\n🔮 Multi-Model Ensemble Separation across: {', '.join(ensemble_model_names)}")
+        stems_list = []
+
+        for m_name in ensemble_model_names:
+            m_tag = "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in m_name)
+            m_stems_dir = os.path.join(track_dir, f"stems_{m_tag}")
+
+            if is_mlx_model(m_name) or (args.engine == "mlx"):
+                m_stems = separate_stems_mlx(
+                    input_audio_path=final_original_wav,
+                    output_folder=m_stems_dir,
+                    model_preset=m_name,
+                    overlap=args.overlap,
+                    batch_size=args.batch_size,
+                    force=args.force,
+                )
+            else:
+                m_stems = separate_stems_msst(
+                    input_audio_path=final_original_wav,
+                    output_folder=m_stems_dir,
+                    model_preset=m_name,
+                    config_path=args.config,
+                    checkpoint_path=args.checkpoint,
+                    chunk_size=args.chunk_size,
+                    overlap=args.overlap,
+                    device_name=args.device,
+                    force=args.force,
+                )
+            stems_list.append(m_stems)
+
+        # Blend ensemble
+        ensemble_tag = "_".join("".join(c if c.isalnum() else "_" for c in m) for m in ensemble_model_names)
+        stems_dir = os.path.join(track_dir, f"stems_ensemble_{ensemble_tag}")
+        stems = ensemble_stems(stems_list, weights=ensemble_weights, output_dir=stems_dir)
+        model_display_name = f"Ensemble ({'+'.join(ensemble_model_names)})"
     else:
-        # Run PyTorch MSST Separation
-        stems = separate_stems_msst(
-            input_audio_path=final_original_wav,
-            output_folder=stems_dir,
-            model_preset=args.model,
-            config_path=args.config,
-            checkpoint_path=args.checkpoint,
-            chunk_size=args.chunk_size,
-            overlap=args.overlap,
-            device_name=args.device,
-            force=args.force,
-        )
+        # Single model path
+        use_mlx = False
+        if args.engine == "mlx":
+            use_mlx = True
+        elif args.engine == "msst":
+            use_mlx = False
+        else: # auto
+            use_mlx = is_mlx_model(args.model)
+
+        model_tag = args.model if not args.checkpoint else os.path.splitext(os.path.basename(args.checkpoint))[0]
+        clean_model_tag = "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in model_tag)
+        stems_dir = os.path.join(track_dir, f"stems_{clean_model_tag}")
+
+        if use_mlx:
+            mlx_model_preset = args.model if is_mlx_model(args.model) else "mlx_demucs_ft"
+            stems = separate_stems_mlx(
+                input_audio_path=final_original_wav,
+                output_folder=stems_dir,
+                model_preset=mlx_model_preset,
+                overlap=args.overlap,
+                batch_size=args.batch_size,
+                force=args.force,
+            )
+        else:
+            stems = separate_stems_msst(
+                input_audio_path=final_original_wav,
+                output_folder=stems_dir,
+                model_preset=args.model,
+                config_path=args.config,
+                checkpoint_path=args.checkpoint,
+                chunk_size=args.chunk_size,
+                overlap=args.overlap,
+                device_name=args.device,
+                force=args.force,
+            )
+        model_display_name = args.model
 
     # 8. Mix non-drum stems into drumless MP3
     out_mp3_path = os.path.join(track_dir, f"{safe_title} (Drumless).mp3")
 
     mix_stems_without_drums(stems, out_mp3_path)
-    set_mp3_metadata(out_mp3_path, info, model_name=args.model)
+    set_mp3_metadata(out_mp3_path, info, model_name=model_display_name)
 
     total_elapsed = time.time() - start_total_time
     print(f"\n🎉 All done in {total_elapsed:.1f}s!")

@@ -114,3 +114,76 @@ def set_mp3_metadata(mp3_path: str, info: Optional[dict], model_name: str = "MSS
         print(f"✅ Metadata set: Title='{pretty_title}', Artist='{artist.strip() if artist else 'Unknown'}'")
     except Exception as e:
         print(f"⚠️  Could not set metadata: {e}")
+
+
+def ensemble_stems(
+    stems_list: list,
+    weights: Optional[list] = None,
+    output_dir: str = "",
+) -> Dict[str, str]:
+    """
+    Combines stem outputs from multiple models via weighted linear averaging.
+
+    Args:
+        stems_list: List of dictionaries mapping stem_name -> wav_file_path.
+        weights: List of float weights for each model. Defaults to equal weights.
+        output_dir: Output directory where the ensembled stems will be saved.
+
+    Returns:
+        Dict mapping stem names to the ensembled stem file paths.
+    """
+    import soundfile as sf
+    import numpy as np
+
+    if not stems_list:
+        raise ValueError("stems_list cannot be empty.")
+
+    n_models = len(stems_list)
+    if weights is None:
+        norm_weights = [1.0 / n_models] * n_models
+    else:
+        total_w = sum(weights)
+        norm_weights = [w / total_w for w in weights]
+
+    os.makedirs(output_dir, exist_ok=True)
+    all_stem_names = sorted(list(set().union(*(s.keys() for s in stems_list))))
+
+    print(f"\n🎛️  Blending ensemble of {n_models} models with weights: {[round(w, 2) for w in norm_weights]}...")
+    ensembled_dict: Dict[str, str] = {}
+
+    for stem_name in all_stem_names:
+        stem_audios = []
+        stem_weights = []
+        sample_rate = 44100
+
+        for model_idx, stems in enumerate(stems_list):
+            if stem_name in stems and os.path.exists(stems[stem_name]):
+                try:
+                    data, sr = sf.read(stems[stem_name], dtype="float32")
+                    sample_rate = sr
+                    stem_audios.append(data)
+                    stem_weights.append(norm_weights[model_idx])
+                except Exception as e:
+                    print(f"⚠️  Could not read stem {stem_name} from model {model_idx}: {e}")
+
+        if not stem_audios:
+            continue
+
+        # Re-normalize weights if not all models produced this stem
+        w_sum = sum(stem_weights)
+        curr_weights = [w / w_sum for w in stem_weights]
+
+        # Align lengths across models to the minimum length
+        min_len = min(len(a) for a in stem_audios)
+        blended = np.zeros_like(stem_audios[0][:min_len], dtype=np.float32)
+
+        for w, audio in zip(curr_weights, stem_audios):
+            blended += w * audio[:min_len]
+
+        out_path = os.path.join(output_dir, f"{stem_name}.wav")
+        sf.write(out_path, blended, sample_rate)
+        ensembled_dict[stem_name] = out_path
+        print(f"  + Ensembled stem: {stem_name} -> {out_path}")
+
+    return ensembled_dict
+

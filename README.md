@@ -45,18 +45,23 @@ Now `makeitdrumless` is available everywhere in your terminal!
 
 ## 📖 Usage
 
-### Basic Usage (YouTube URL)
-
-Generates a drumless track using the default model (**SCNet Large by starrytong**) and Apple Silicon MPS acceleration. All outputs are saved to `~/Music/MakeItDrumless/<Song Title>/`:
+### Basic Usage
 
 ```bash
-makeitdrumless "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
-```
+# 1. Ultra-fast MLX Demucs on Apple Silicon (~50s full song):
+makeitdrumless "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --model mlx_demucs
 
-### Process Local Audio Files
+# 2. Highest quality fine-tuned MLX Demucs (SDR 10.02, matches SCNet XL):
+makeitdrumless "/path/to/song.mp3" --model mlx_demucs_ft
 
-```bash
-makeitdrumless "/path/to/my_song.mp3"
+# 3. Classic SCNet Large (PyTorch MPS):
+makeitdrumless "/path/to/song.mp3" --model scnet_large_starrytong
+
+# 4. Multi-Model Ensemble (Cancels bleed across SCNet + Demucs):
+makeitdrumless "/path/to/song.mp3" --ensemble "scnet_large_starrytong,mlx_demucs_ft" --ensemble-weights "0.5,0.5"
+
+# 5. List all available models and their download status:
+makeitdrumless --list-models
 ```
 
 ### Output Folder Structure
