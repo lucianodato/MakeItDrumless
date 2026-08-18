@@ -24,6 +24,7 @@ from makeitdrumless.audio.processing import (
     ensemble_stems,
 )
 from makeitdrumless.ffmpeg.manager import setup_ffmpeg_binary
+from makeitdrumless.ytmusic import upload_drumless_track, setup_ytmusic_auth
 
 
 def list_all_models():
@@ -143,15 +144,34 @@ Examples:
         action="store_true",
         help="Force re-running separation and overwrite existing cached stems for this model."
     )
+    parser.add_argument(
+        "--upload-ytmusic", "-u",
+        action="store_true",
+        help="Automatically upload the generated drumless track to your YouTube Music library."
+    )
+    parser.add_argument(
+        "--setup-ytmusic",
+        action="store_true",
+        help="Run interactive YouTube Music authentication setup wizard and exit."
+    )
+    parser.add_argument(
+        "--ytmusic-auth",
+        help="Custom path to YouTube Music authentication JSON file (default: ~/.config/makeitdrumless/ytmusic_auth.json)."
+    )
 
     args = parser.parse_args()
 
-    # 1. Handle --list-models
+    # 1. Handle --setup-ytmusic
+    if args.setup_ytmusic:
+        setup_ytmusic_auth(output_path=args.ytmusic_auth)
+        return
+
+    # 2. Handle --list-models
     if args.list_models:
         list_all_models()
         return
 
-    # 2. Handle --download-model
+    # 3. Handle --download-model
     if args.download_model:
         model_name = args.download_model.strip()
         if is_mlx_model(model_name):
@@ -321,6 +341,10 @@ Examples:
 
     mix_stems_without_drums(stems, out_mp3_path)
     set_mp3_metadata(out_mp3_path, info, model_name=model_display_name)
+
+    # 9. Upload to YouTube Music if requested
+    if args.upload_ytmusic:
+        upload_drumless_track(out_mp3_path, auth_file=args.ytmusic_auth)
 
     total_elapsed = time.time() - start_total_time
     print(f"\n🎉 All done in {total_elapsed:.1f}s!")

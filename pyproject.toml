@@ -38,6 +38,7 @@ dependencies = [
     "music-source-separation-training @ git+https://github.com/lucianodato/Music-Source-Separation-Training.git",
     "mlx",
     "demucs-mlx",
+    "ytmusicapi>=1.7.0",
 ]
 
 [project.scripts]

@@ -60,8 +60,30 @@ makeitdrumless "/path/to/song.mp3" --model scnet_large_starrytong
 # 4. Multi-Model Ensemble (Cancels bleed across SCNet + Demucs):
 makeitdrumless "/path/to/song.mp3" --ensemble "scnet_large_starrytong,mlx_demucs_ft" --ensemble-weights "0.5,0.5"
 
-# 5. List all available models and their download status:
+# 5. Generate and automatically upload to YouTube Music library:
+makeitdrumless "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --upload-ytmusic
+
+# 6. List all available models and their download status:
 makeitdrumless --list-models
+```
+
+---
+
+## ☁️ YouTube Music Auto-Upload
+
+You can automatically push your generated drumless backing tracks directly to your personal **YouTube Music library** (`Library > Uploads` tab).
+
+### One-Time Setup:
+Configure your YouTube Music account credentials:
+```bash
+makeitdrumless --setup-ytmusic
+```
+Follow the on-screen instructions to paste your browser session headers. Credentials will be securely saved to `~/.config/makeitdrumless/ytmusic_auth.json`.
+
+### Uploading Tracks:
+Add the `--upload-ytmusic` (or `-u`) flag when running `makeitdrumless`:
+```bash
+makeitdrumless "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --upload-ytmusic
 ```
 
 ### Output Folder Structure
