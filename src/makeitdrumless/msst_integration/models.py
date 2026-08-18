@@ -58,6 +58,27 @@ MODEL_REGISTRY: Dict[str, Dict[str, Any]] = {
     },
 
     # --- RoFormer & Conformer Architectures ---
+    "bs_mega_53stem_drums": {
+        "description": "BS-RoFormer Mega 53-stem Drums (2 stems: drums, other) - MVSep SOTA drum extraction",
+        "model_type": "bs_roformer",
+        "stems": ["drums", "other"],
+        "config_url": "https://huggingface.co/noblebarkrr/BS-Roformer-MVSep-Mega-53-stems/resolve/main/v1/bs_mega_53stem_drums_mvsep_config.yaml",
+        "checkpoint_url": "https://huggingface.co/noblebarkrr/BS-Roformer-MVSep-Mega-53-stems/resolve/main/v1/bs_mega_53stem_drums_mvsep.ckpt",
+    },
+    "bs_drums2_xlancer": {
+        "description": "BS-RoFormer Drums v2 by Xlance (2 stems: drums, other) - Punchy transient isolation",
+        "model_type": "bs_roformer",
+        "stems": ["drums", "other"],
+        "config_url": "https://huggingface.co/noblebarkrr/mvsepless_resources/resolve/main/bs_roformer/bs_drums2_xlancer_config.yaml",
+        "checkpoint_url": "https://huggingface.co/noblebarkrr/mvsepless_resources/resolve/main/bs_roformer/bs_drums2_xlancer.ckpt",
+    },
+    "bs_drums_gilliaaan": {
+        "description": "BS-RoFormer Drums Duality by Gilliaaan (2 stems: drums, other) - High cymbal/hihat precision",
+        "model_type": "bs_roformer",
+        "stems": ["drums", "other"],
+        "config_url": "https://huggingface.co/noblebarkrr/mvsepless_resources/resolve/main/bs_roformer/bs_drums_gilliaaan_config.yaml",
+        "checkpoint_url": "https://huggingface.co/noblebarkrr/mvsepless_resources/resolve/main/bs_roformer/bs_drums_gilliaaan.ckpt",
+    },
     "bs_roformer": {
         "description": "Band-Split RoFormer (4 stems: vocals, bass, drums, other) - SDR 9.65",
         "model_type": "bs_roformer",

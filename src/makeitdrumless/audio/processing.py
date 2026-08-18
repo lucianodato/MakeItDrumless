@@ -64,6 +64,22 @@ def mix_stems_without_drums(
         print("❌ No valid stems found to create drumless track.")
         return ""
 
+    # If exactly one non-drum stem exists (e.g. 2-stem model with 'other' or 'no_drums'),
+    # bypass overlay mixing and directly export the pristine backing track
+    if len(non_drum_stems) == 1:
+        stem_name, file_path = next(iter(non_drum_stems.items()))
+        print(f"⚡ Single backing stem detected ('{stem_name}'). Direct conversion to MP3 (bypassing stem overlay)...")
+        try:
+            seg = AudioSegment.from_wav(file_path)
+            out_dir = os.path.dirname(os.path.abspath(output_path))
+            os.makedirs(out_dir, exist_ok=True)
+            seg = seg.normalize(headroom=0.1)
+            seg.export(output_path, format="mp3", bitrate="320k")
+            print(f"✅ Final drumless track saved to: {output_path}")
+            return output_path
+        except Exception as e:
+            print(f"⚠️ Error exporting direct stem {stem_name}: {e}")
+
     print(f"🎚️  Mixing non-drum stems: {', '.join(non_drum_stems.keys())}...")
     mixed = None
     for stem_name, file_path in non_drum_stems.items():
