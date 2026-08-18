@@ -8,9 +8,9 @@ Powered by **[Music-Source-Separation-Training (MSST)](https://github.com/ZFTurb
 
 ## ✨ Features
 
-- ⚡ **Apple Silicon Accelerated (`mps`)**: Native Metal Performance Shaders support on Mac (M1/M2/M3/M4) for blazing fast ~15-30s inference.
+- ⚡ **Apple Silicon Accelerated (`mps`)**: Native Metal Performance Shaders support on Mac (M1/M2/M3/M4) for blazing fast inference.
 - 📦 **Zero Venv Friction**: Install globally via `uv tool` and run `makeitdrumless` from any terminal directory.
-- 🎛️ **Multi-Architecture Support**: Pre-configured with top-performing source separation models (**SCNet XL**, **BS-Conformer**, **Mel-Band-RoFormer**, **MDX23C**, **HTDemucs**).
+- 🎛️ **Multi-Architecture Support**: Pre-configured with top-performing source separation models (**SCNet XL**, **BS-Conformer**, **Mel-Band-RoFormer**, **BS-RoFormer**, **HTDemucs**).
 - 📥 **Automated Model Downloads**: Checkpoints (`.ckpt`) and configs (`.yaml`) are automatically fetched and cached in `~/.cache/makeitdrumless/`.
 - 🎵 **Flexible Inputs**: Accepts YouTube URLs or local audio files (`.mp3`, `.wav`, `.flac`, `.m4a`).
 - 🏷️ **ID3 Metadata & Tagging**: Automatically embeds track title, artist, and model information into the generated MP3.
@@ -48,17 +48,17 @@ Now `makeitdrumless` is available everywhere in your terminal!
 ### Basic Usage
 
 ```bash
-# 1. Ultra-fast MLX Demucs on Apple Silicon (~50s full song):
-makeitdrumless "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --model mlx_demucs
+# 1. Generate drumless track with default model (SCNet Large):
+makeitdrumless "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 
-# 2. Highest quality fine-tuned MLX Demucs (SDR 10.02, matches SCNet XL):
-makeitdrumless "/path/to/song.mp3" --model mlx_demucs_ft
+# 2. Highest quality SCNet XL (SDR 10.08):
+makeitdrumless "/path/to/song.mp3" --model scnet_xl
 
-# 3. Classic SCNet Large (PyTorch MPS):
-makeitdrumless "/path/to/song.mp3" --model scnet_large_starrytong
+# 3. Band-Split RoFormer (SDR 9.65):
+makeitdrumless "/path/to/song.mp3" --model bs_roformer
 
-# 4. Multi-Model Ensemble (Cancels bleed across SCNet + Demucs):
-makeitdrumless "/path/to/song.mp3" --ensemble "scnet_large_starrytong,mlx_demucs_ft" --ensemble-weights "0.5,0.5"
+# 4. Multi-Model Ensemble (Blends SCNet Large + BS-RoFormer):
+makeitdrumless "/path/to/song.mp3" --ensemble "scnet_large_starrytong,bs_roformer" --ensemble-weights "0.5,0.5"
 
 # 5. Generate and automatically upload to YouTube Music library:
 makeitdrumless "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --upload-ytmusic
@@ -138,16 +138,7 @@ makeitdrumless "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --model scnet_small
 
 ## 🏆 Supported Model Presets
 
-### 🍏 Apple MLX Models (Ultra-Fast Metal Acceleration on Apple Silicon via `demucs-mlx`)
-
-| Preset Name | Underlying Model | Target Stems | SDR Quality | Notes |
-|---|---|---|---|---|
-| `mlx_demucs` *(MLX Default)* | HTDemucs v4 | 4 stems (`drums`, `vocals`, `bass`, `other`) | **9.40** | Blazing Fast (~50s full song), bit-exact |
-| `mlx_demucs_ft` | HTDemucs v4 FT | 4 stems (`drums`, `vocals`, `bass`, `other`) | **10.02** | 4-model fine-tuned ensemble (matches SCNet XL) |
-| `mlx_demucs_6s` | HTDemucs v4 6s | 6 stems | **8.50** | Drums, Bass, Vocals, Guitar, Piano, Other |
-| `mlx_demucs_mmi` | HDemucs v3 MMI | 4 stems | **8.88** | Demucs v3 MMI model |
-
-### 🔥 MSST PyTorch Models (SCNet & DualPathRNN Architectures)
+### 🔥 MSST PyTorch Models (SCNet, RoFormer, Conformer & Demucs Architectures)
 
 | Preset Name | Architecture | Stems | Notes |
 |---|---|---|---|

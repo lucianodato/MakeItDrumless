@@ -175,7 +175,7 @@ def separate_stems_msst(
 
     # Perform separation using MSST bigshifts_wrapper
     shifts_val = shifts if shifts is not None else getattr(config.inference, "bigshifts", 1)
-    with torch.no_grad():
+    with torch.inference_mode():
         waveforms = bigshifts_wrapper(
             config,
             model,

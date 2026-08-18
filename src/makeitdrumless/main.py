@@ -6,17 +6,11 @@ import shutil
 from pathlib import Path
 
 from makeitdrumless.msst_integration.models import (
-    list_available_models as list_available_msst_models,
+    list_available_models,
     download_model_preset,
-    MODEL_REGISTRY as MSST_MODEL_REGISTRY,
+    MODEL_REGISTRY,
 )
 from makeitdrumless.msst_integration.inference import separate_stems_msst
-from makeitdrumless.mlx_integration.models import (
-    MLX_MODEL_REGISTRY,
-    list_available_mlx_models,
-    is_mlx_model,
-)
-from makeitdrumless.mlx_integration.inference import separate_stems_mlx
 from makeitdrumless.audio.downloader import get_audio_input, get_default_output_base
 from makeitdrumless.audio.processing import (
     mix_stems_without_drums,
@@ -27,41 +21,28 @@ from makeitdrumless.ffmpeg.manager import setup_ffmpeg_binary
 from makeitdrumless.ytmusic import upload_drumless_track, setup_ytmusic_auth
 
 
-def list_all_models():
-    """Prints all available models for both MLX and MSST PyTorch engines."""
-    print("\n" + "=" * 90)
-    print("🍏 APPLE MLX NATIVE MODELS (High Speed Metal Acceleration on Apple Silicon)")
-    print("=" * 90)
-    list_available_mlx_models()
-    
-    print("=" * 90)
-    print("🔥 MSST PYTORCH MODELS (SCNet & DualPathRNN Architectures)")
-    print("=" * 90)
-    list_available_msst_models()
-
-
 def main():
     print("\n🥁 === MakeItDrumless === 🥁\n")
 
     parser = argparse.ArgumentParser(
         prog="makeitdrumless",
-        description="Generate high-quality drumless backing tracks from YouTube videos or local audio files with Apple MLX or PyTorch MPS acceleration.",
+        description="Generate high-quality drumless backing tracks from YouTube videos or local audio files powered by MSST with Apple Silicon MPS acceleration.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Generate drumless track using default high-quality model:
+  # Generate drumless track using default high-quality model (SCNet Large):
   makeitdrumless "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 
-  # Fast MLX inference with Demucs v4 FT (SDR 10.02, matches SCNet XL):
-  makeitdrumless "/path/to/song.mp3" --model mlx_demucs_ft
+  # Highest quality SCNet XL (SDR 10.08):
+  makeitdrumless "/path/to/song.mp3" --model scnet_xl
 
-  # MLX BS-RoFormer (SDR 10.53, exceeds SCNet XL):
-  makeitdrumless "/path/to/song.mp3" --model mlx_roformer
+  # Band-Split RoFormer (SDR 9.65):
+  makeitdrumless "/path/to/song.mp3" --model bs_roformer
 
-  # Classic PyTorch SCNet Large:
-  makeitdrumless "/path/to/song.mp3" --model scnet_large_starrytong
+  # Multi-Model Ensemble (Blends SCNet Large + BS-RoFormer):
+  makeitdrumless "/path/to/song.mp3" --ensemble "scnet_large_starrytong,bs_roformer" --ensemble-weights "0.5,0.5"
 
-  # List all available models (MLX and PyTorch):
+  # List all available model presets:
   makeitdrumless --list-models
         """
     )
@@ -74,19 +55,13 @@ Examples:
     parser.add_argument(
         "--model", "-m",
         default="scnet_large_starrytong",
-        help="Model preset name (e.g. 'scnet_large_starrytong', 'mlx_demucs_ft', 'mlx_roformer'). Run --list-models to see all."
-    )
-    parser.add_argument(
-        "--engine", "-e",
-        default="auto",
-        choices=["auto", "mlx", "msst"],
-        help="Inference engine ('auto' detects by model name, 'mlx' for Apple MLX, 'msst' for PyTorch MSST)."
+        help="Model preset name (e.g. 'scnet_large_starrytong', 'scnet_xl', 'bs_roformer'). Run --list-models to see all."
     )
     parser.add_argument(
         "--device", "-d",
         default="auto",
         choices=["auto", "mps", "cuda", "cpu"],
-        help="Compute device for PyTorch MSST ('auto' selects Apple Silicon MPS on Mac, CUDA on NVIDIA, or CPU)."
+        help="Compute device ('auto' selects Apple Silicon MPS on Mac, CUDA on NVIDIA, or CPU)."
     )
     parser.add_argument(
         "--output-dir", "-o",
@@ -95,7 +70,7 @@ Examples:
     parser.add_argument(
         "--list-models", "-l",
         action="store_true",
-        help="List all available model presets (MLX & MSST), descriptions, and download status."
+        help="List all available model presets, descriptions, and download status."
     )
     parser.add_argument(
         "--download-model",
@@ -121,19 +96,14 @@ Examples:
         help="Chunk overlap factor (e.g. 2, 4, 8). Default is defined in model config."
     )
     parser.add_argument(
-        "--batch-size", "-b",
-        type=int,
-        help="Batch size for chunk inference (e.g. 1, 2, 4, 8)."
-    )
-    parser.add_argument(
         "--shifts",
         type=int,
         default=0,
-        help="Number of random time-shift passes for Demucs (e.g. 1 or 2 for smoother spectrograms). Default: 0."
+        help="Number of random time-shift passes (e.g. 1 or 2 for smoother spectrograms). Default: 0."
     )
     parser.add_argument(
         "--ensemble",
-        help="Comma-separated list of models to ensemble (e.g. 'scnet_large_starrytong,mlx_demucs_ft')."
+        help="Comma-separated list of models to ensemble (e.g. 'scnet_large_starrytong,bs_roformer')."
     )
     parser.add_argument(
         "--ensemble-weights",
@@ -168,38 +138,27 @@ Examples:
 
     # 2. Handle --list-models
     if args.list_models:
-        list_all_models()
+        list_available_models()
         return
 
     # 3. Handle --download-model
     if args.download_model:
         model_name = args.download_model.strip()
-        if is_mlx_model(model_name):
-            print(f"📥 Preparing MLX model preset: {model_name}...")
-            try:
-                from demucs_mlx import Separator
-                info = MLX_MODEL_REGISTRY[model_name]
-                Separator(model=info["demucs_model"])
-                print(f"\n🎉 Successfully downloaded and cached MLX model '{model_name}' ({info['demucs_model']})!")
-            except Exception as e:
-                print(f"❌ Failed to download MLX model: {e}")
-                sys.exit(1)
-        else:
-            print(f"📥 Downloading MSST model preset: {model_name}...")
-            try:
-                m_type, cfg_p, ckpt_p = download_model_preset(model_name)
-                print(f"\n🎉 Successfully downloaded and cached '{model_name}'!")
-                print(f"  - Config:     {cfg_p}")
-                print(f"  - Checkpoint: {ckpt_p}")
-            except Exception as e:
-                print(f"❌ Failed to download model: {e}")
-                sys.exit(1)
+        print(f"📥 Downloading model preset: {model_name}...")
+        try:
+            m_type, cfg_p, ckpt_p = download_model_preset(model_name)
+            print(f"\n🎉 Successfully downloaded and cached '{model_name}'!")
+            print(f"  - Config:     {cfg_p}")
+            print(f"  - Checkpoint: {ckpt_p}")
+        except Exception as e:
+            print(f"❌ Failed to download model: {e}")
+            sys.exit(1)
         return
 
-    # 3. Setup FFmpeg
+    # 4. Setup FFmpeg
     setup_ffmpeg_binary()
 
-    # 4. Validate input source
+    # 5. Validate input source
     if not args.input:
         parser.print_help()
         print("\n❌ Error: Please provide a YouTube URL or local audio file path.\n")
@@ -207,11 +166,11 @@ Examples:
 
     start_total_time = time.time()
 
-    # 5. Determine Base Output Directory (~/Music/MakeItDrumless by default)
+    # 6. Determine Base Output Directory (~/Music/MakeItDrumless by default)
     base_output_dir = os.path.abspath(args.output_dir or get_default_output_base())
     os.makedirs(base_output_dir, exist_ok=True)
 
-    # 6. Acquire Audio Input (Download or convert)
+    # 7. Acquire Audio Input (Download or convert)
     initial_audio_wav, info = get_audio_input(args.input, output_folder=base_output_dir)
 
     # Extract clean track title
@@ -244,7 +203,7 @@ Examples:
                 except Exception:
                     pass
 
-    # 7. Run separation (Ensemble or Single Model)
+    # 8. Run separation (Ensemble or Single Model)
     if args.ensemble:
         ensemble_model_names = [m.strip() for m in args.ensemble.split(",") if m.strip()]
         if len(ensemble_model_names) < 2:
@@ -266,29 +225,18 @@ Examples:
             m_tag = "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in m_name)
             m_stems_dir = os.path.join(track_dir, f"stems_{m_tag}")
 
-            if is_mlx_model(m_name) or (args.engine == "mlx"):
-                m_stems = separate_stems_mlx(
-                    input_audio_path=final_original_wav,
-                    output_folder=m_stems_dir,
-                    model_preset=m_name,
-                    overlap=args.overlap,
-                    shifts=args.shifts,
-                    batch_size=args.batch_size,
-                    force=args.force,
-                )
-            else:
-                m_stems = separate_stems_msst(
-                    input_audio_path=final_original_wav,
-                    output_folder=m_stems_dir,
-                    model_preset=m_name,
-                    config_path=args.config,
-                    checkpoint_path=args.checkpoint,
-                    chunk_size=args.chunk_size,
-                    overlap=args.overlap,
-                    shifts=args.shifts,
-                    device_name=args.device,
-                    force=args.force,
-                )
+            m_stems = separate_stems_msst(
+                input_audio_path=final_original_wav,
+                output_folder=m_stems_dir,
+                model_preset=m_name,
+                config_path=args.config,
+                checkpoint_path=args.checkpoint,
+                chunk_size=args.chunk_size,
+                overlap=args.overlap,
+                shifts=args.shifts,
+                device_name=args.device,
+                force=args.force,
+            )
             stems_list.append(m_stems)
 
         # Blend ensemble
@@ -298,51 +246,31 @@ Examples:
         model_display_name = f"Ensemble ({'+'.join(ensemble_model_names)})"
     else:
         # Single model path
-        use_mlx = False
-        if args.engine == "mlx":
-            use_mlx = True
-        elif args.engine == "msst":
-            use_mlx = False
-        else: # auto
-            use_mlx = is_mlx_model(args.model)
-
         model_tag = args.model if not args.checkpoint else os.path.splitext(os.path.basename(args.checkpoint))[0]
         clean_model_tag = "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in model_tag)
         stems_dir = os.path.join(track_dir, f"stems_{clean_model_tag}")
 
-        if use_mlx:
-            mlx_model_preset = args.model if is_mlx_model(args.model) else "mlx_demucs_ft"
-            stems = separate_stems_mlx(
-                input_audio_path=final_original_wav,
-                output_folder=stems_dir,
-                model_preset=mlx_model_preset,
-                overlap=args.overlap,
-                shifts=args.shifts,
-                batch_size=args.batch_size,
-                force=args.force,
-            )
-        else:
-            stems = separate_stems_msst(
-                input_audio_path=final_original_wav,
-                output_folder=stems_dir,
-                model_preset=args.model,
-                config_path=args.config,
-                checkpoint_path=args.checkpoint,
-                chunk_size=args.chunk_size,
-                overlap=args.overlap,
-                shifts=args.shifts,
-                device_name=args.device,
-                force=args.force,
-            )
+        stems = separate_stems_msst(
+            input_audio_path=final_original_wav,
+            output_folder=stems_dir,
+            model_preset=args.model,
+            config_path=args.config,
+            checkpoint_path=args.checkpoint,
+            chunk_size=args.chunk_size,
+            overlap=args.overlap,
+            shifts=args.shifts,
+            device_name=args.device,
+            force=args.force,
+        )
         model_display_name = args.model
 
-    # 8. Mix non-drum stems into drumless MP3
+    # 9. Mix non-drum stems into drumless MP3
     out_mp3_path = os.path.join(track_dir, f"{safe_title} (Drumless).mp3")
 
     mix_stems_without_drums(stems, out_mp3_path)
     set_mp3_metadata(out_mp3_path, info, model_name=model_display_name)
 
-    # 9. Upload to YouTube Music if requested
+    # 10. Upload to YouTube Music if requested
     if args.upload_ytmusic:
         upload_drumless_track(out_mp3_path, auth_file=args.ytmusic_auth)
 
