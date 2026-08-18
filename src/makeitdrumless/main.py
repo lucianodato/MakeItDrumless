@@ -125,6 +125,12 @@ Examples:
         help="Batch size for chunk inference (e.g. 1, 2, 4, 8)."
     )
     parser.add_argument(
+        "--shifts",
+        type=int,
+        default=0,
+        help="Number of random time-shift passes for Demucs (e.g. 1 or 2 for smoother spectrograms). Default: 0."
+    )
+    parser.add_argument(
         "--ensemble",
         help="Comma-separated list of models to ensemble (e.g. 'scnet_large_starrytong,mlx_demucs_ft')."
     )
@@ -246,6 +252,7 @@ Examples:
                     output_folder=m_stems_dir,
                     model_preset=m_name,
                     overlap=args.overlap,
+                    shifts=args.shifts,
                     batch_size=args.batch_size,
                     force=args.force,
                 )
@@ -258,6 +265,7 @@ Examples:
                     checkpoint_path=args.checkpoint,
                     chunk_size=args.chunk_size,
                     overlap=args.overlap,
+                    shifts=args.shifts,
                     device_name=args.device,
                     force=args.force,
                 )
@@ -289,6 +297,7 @@ Examples:
                 output_folder=stems_dir,
                 model_preset=mlx_model_preset,
                 overlap=args.overlap,
+                shifts=args.shifts,
                 batch_size=args.batch_size,
                 force=args.force,
             )
@@ -301,6 +310,7 @@ Examples:
                 checkpoint_path=args.checkpoint,
                 chunk_size=args.chunk_size,
                 overlap=args.overlap,
+                shifts=args.shifts,
                 device_name=args.device,
                 force=args.force,
             )

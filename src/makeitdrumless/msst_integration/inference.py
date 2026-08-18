@@ -25,6 +25,7 @@ def separate_stems_msst(
     model_type: Optional[str] = None,
     chunk_size: Optional[int] = None,
     overlap: Optional[int] = None,
+    shifts: Optional[int] = None,
     device_name: str = "auto",
     force: bool = False,
 ) -> Dict[str, str]:
@@ -173,6 +174,7 @@ def separate_stems_msst(
             mix, norm_params = normalize_audio(mix)
 
     # Perform separation using MSST bigshifts_wrapper
+    shifts_val = shifts if shifts is not None else getattr(config.inference, "bigshifts", 1)
     with torch.no_grad():
         waveforms = bigshifts_wrapper(
             config,
@@ -181,7 +183,7 @@ def separate_stems_msst(
             device,
             model_type=resolved_model_type,
             pbar=True,
-            bigshifts=1
+            bigshifts=shifts_val
         )
 
     # Save output stems
