@@ -127,6 +127,10 @@ makeitdrumless --list-models
 ### Choose a Specific Model
 
 ```bash
+# Using specialized BS-RoFormer Drum models (MVSep SOTA / Duality)
+makeitdrumless "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --model bs_mega_53stem_drums
+makeitdrumless "/path/to/song.mp3" --model bs_drums_gilliaaan
+
 # Using BS-Conformer
 makeitdrumless "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --model bs_conformer
 
@@ -149,6 +153,9 @@ makeitdrumless "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --model scnet_small
 | `scnet_small_starrytong` | SCNet | 4 stems | Compact model by starrytong (SDR 9.03) |
 | `scnet_tran_small` | SCNet Tran | 4 stems | SCNet Transformer hybrid (SDR 8.92) |
 | `scnet_small` | SCNet | 4 stems | Fast & ultra-lightweight (~42MB, SDR 8.81) |
+| `bs_mega_53stem_drums` | BS-RoFormer | 2 stems | MVSep SOTA drum extraction (drums, other) |
+| `bs_drums2_xlancer` | BS-RoFormer | 2 stems | Punchy transient isolation by Xlance (drums, other) |
+| `bs_drums_gilliaaan` | BS-RoFormer | 2 stems | High cymbal/hihat precision (Duality by Gilliaaan) |
 | `bs_roformer` | BS-RoFormer | 4 stems | Band-Split RoFormer (SDR 9.65) |
 | `bs_conformer` | BS-Conformer | 4 stems | Conformer-based 4-stem demixing (SDR 9.18) |
 | `htdemucs4` | HTDemucs | 4 stems | Demucs v4 Hybrid Transformer (SDR 9.16) |
@@ -168,3 +175,19 @@ git fetch upstream
 git merge upstream/main
 git push origin main
 ```
+
+---
+
+## ⚖️ Legal & Copyright Disclaimer
+
+`MakeItDrumless` is an open-source tool designed for educational, research, practice, and personal music-study purposes (such as drum-along practice and stem analysis).
+
+- **Respect Intellectual Property:** Users are solely responsible for ensuring that their use of this software complies with applicable copyright laws, platform Terms of Service, and licensing agreements in their jurisdiction.
+- **Authorized Use:** Only process audio files or URLs that you own, have express permission to use, or that are in the public domain / licensed under Creative Commons.
+- **Third-Party Affiliation:** This project is independent and is not affiliated with, endorsed by, or sponsored by YouTube, Google LLC, or any of their affiliates.
+
+---
+
+## 📄 License
+
+This project is licensed under the [MIT License](LICENSE).
