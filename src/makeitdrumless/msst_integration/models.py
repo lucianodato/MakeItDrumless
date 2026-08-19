@@ -95,6 +95,20 @@ MODEL_REGISTRY: Dict[str, Dict[str, Any]] = {
     },
 
     # --- Demucs & HTDemucs Architectures ---
+    "htdemucs": {
+        "description": "HTDemucs4 Hybrid Transformer (4 stems: vocals, bass, drums, other) - SDR 9.16",
+        "model_type": "htdemucs",
+        "stems": ["vocals", "bass", "drums", "other"],
+        "config_url": "https://raw.githubusercontent.com/ZFTurbo/Music-Source-Separation-Training/main/configs/config_musdb18_htdemucs.yaml",
+        "checkpoint_url": "https://dl.fbaipublicfiles.com/demucs/hybrid_transformer/955717e8-8726e21a.th",
+    },
+    "htdemucs_ft": {
+        "description": "HTDemucs4 Hybrid Transformer (4 stems: vocals, bass, drums, other) - SDR 9.16",
+        "model_type": "htdemucs",
+        "stems": ["vocals", "bass", "drums", "other"],
+        "config_url": "https://raw.githubusercontent.com/ZFTurbo/Music-Source-Separation-Training/main/configs/config_musdb18_htdemucs.yaml",
+        "checkpoint_url": "https://dl.fbaipublicfiles.com/demucs/hybrid_transformer/955717e8-8726e21a.th",
+    },
     "htdemucs4": {
         "description": "HTDemucs4 Hybrid Transformer (4 stems: vocals, bass, drums, other) - SDR 9.16",
         "model_type": "htdemucs",
@@ -103,6 +117,13 @@ MODEL_REGISTRY: Dict[str, Dict[str, Any]] = {
         "checkpoint_url": "https://dl.fbaipublicfiles.com/demucs/hybrid_transformer/955717e8-8726e21a.th",
     },
     "htdemucs4_6s": {
+        "description": "HTDemucs4 (6 stems: vocals, bass, drums, other, piano, guitar)",
+        "model_type": "htdemucs",
+        "stems": ["vocals", "bass", "drums", "other", "piano", "guitar"],
+        "config_url": "https://raw.githubusercontent.com/ZFTurbo/Music-Source-Separation-Training/main/configs/config_htdemucs_6stems.yaml",
+        "checkpoint_url": "https://dl.fbaipublicfiles.com/demucs/hybrid_transformer/5c90dfd2-34c22ccb.th",
+    },
+    "htdemucs_6s": {
         "description": "HTDemucs4 (6 stems: vocals, bass, drums, other, piano, guitar)",
         "model_type": "htdemucs",
         "stems": ["vocals", "bass", "drums", "other", "piano", "guitar"],

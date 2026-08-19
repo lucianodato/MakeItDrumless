@@ -107,7 +107,7 @@ def separate_stems_msst(
             "Please ensure music-source-separation-training is installed."
         ) from e
 
-    # 3. Resolve Device (Apple Silicon MPS / CUDA / CPU)
+    # 3. Resolve Device (Apple Silicon MLX / MPS / CUDA / CPU)
     device = get_optimal_device(device_name)
     print_device_info(device)
 
@@ -124,6 +124,94 @@ def separate_stems_msst(
         raise FileNotFoundError(f"Model checkpoint file not found: {checkpoint_path}")
 
     os.makedirs(track_output_dir, exist_ok=True)
+
+    # 5. Check if MLX execution is viable
+    from utils.mlx_engine import is_mlx_available, can_run_on_mlx, load_mlx_model, bigshifts_wrapper_mlx
+    use_mlx = False
+    if (device == "mlx" or str(device).lower() == "mlx") and is_mlx_available():
+        can_run, reason = can_run_on_mlx(model_type, config_path, checkpoint_path)
+        if can_run:
+            use_mlx = True
+        else:
+            print(f"\n⚠️  [MLX Notice] Model preset '{model_preset}' cannot run on MLX backend:")
+            print(f"    Reason: {reason}")
+            print("➡️  Falling back to Apple Silicon GPU via PyTorch MPS...\n")
+            if torch and torch.backends.mps.is_available():
+                device = torch.device("mps")
+            else:
+                device = torch.device("cpu") if torch else "cpu"
+
+    if use_mlx:
+        try:
+            print(f"\n🎛️  Running MSST Separation using model: {os.path.basename(checkpoint_path)} (MLX Metal Accelerated)")
+            start_time = time.time()
+            mlx_model, mlx_config, resolved_mtype = load_mlx_model(model_type, config_path, checkpoint_path)
+            sample_rate = getattr(mlx_config.get("audio", {}), "sample_rate", 44100) if isinstance(mlx_config, dict) else 44100
+            
+            training_cfg = mlx_config.get("training", {}) if isinstance(mlx_config, dict) else {}
+            target_instr = training_cfg.get("target_instrument")
+            instruments = [target_instr] if target_instr else training_cfg.get("instruments", ["vocals", "bass", "drums", "other"])[:]
+
+            print(f"🎵 Loading audio '{os.path.basename(input_audio_path)}' (Sample rate: {sample_rate}Hz)...")
+            mix, sr = librosa.load(input_audio_path, sr=sample_rate, mono=False)
+            if len(mix.shape) == 1:
+                mix = np.stack([mix, mix], axis=0)
+
+            print(f"⏳ Separating stems on Apple Silicon GPU (MLX Metal)... (Instruments: {', '.join(instruments)})")
+
+            norm_params = None
+            if "normalize" in getattr(mlx_config, "inference", {}):
+                if mlx_config["inference"]["normalize"] is True:
+                    mix, norm_params = normalize_audio(mix)
+
+            shifts_val = shifts if shifts is not None else getattr(mlx_config.get("inference", {}), "bigshifts", 1)
+            waveforms = bigshifts_wrapper_mlx(
+                config=mlx_config,
+                model=mlx_model,
+                mix=mix,
+                model_type=resolved_mtype,
+                pbar=True,
+                bigshifts=shifts_val,
+                chunk_size=chunk_size,
+                overlap=overlap,
+            )
+
+            # If model only extracted a target instrument (e.g. drums), compute 'other' = mix - target
+            if target_instr and len(instruments) == 1 and target_instr in waveforms and "other" not in waveforms:
+                waveforms["other"] = mix - waveforms[target_instr]
+                instruments.append("other")
+
+            # Save output stems
+            saved_stems = {}
+            for inst_name in instruments:
+                if inst_name in waveforms:
+                    estimates = waveforms[inst_name]
+                    if norm_params is not None and "normalize" in getattr(mlx_config, "inference", {}):
+                        if mlx_config["inference"]["normalize"] is True:
+                            estimates = denormalize_audio(estimates, norm_params)
+
+                    out_file = os.path.join(track_output_dir, f"{inst_name}.wav")
+                    _save_waveform(estimates, sample_rate, out_file)
+                    saved_stems[inst_name] = out_file
+
+            del mlx_model
+            del waveforms
+            del mix
+            gc.collect()
+
+            elapsed = time.time() - start_time
+            print(f"⏱️  Separation finished in {elapsed:.2f} seconds (MLX Metal).")
+            if output_folder:
+                print(f"📁 Separated stems saved to: {track_output_dir}")
+            return saved_stems
+
+        except Exception as e:
+            print(f"\n⚠️  [MLX Notice] Encountered error during MLX model execution: {e}")
+            print("➡️  Falling back to Apple Silicon GPU via PyTorch MPS...\n")
+            if torch and torch.backends.mps.is_available():
+                device = torch.device("mps")
+            else:
+                device = torch.device("cpu") if torch else "cpu"
 
     print(f"\n🎛️  Running MSST Separation using model: {os.path.basename(checkpoint_path)}")
     start_time = time.time()
@@ -142,7 +230,8 @@ def separate_stems_msst(
     model, config = get_model_from_config(model_type, config_path)
 
     # Configure batch size, chunk size and overlap for memory efficiency on Apple Silicon
-    if device.type == "mps":
+    dev_type = getattr(device, "type", str(device)).strip().lower()
+    if dev_type == "mps":
         if hasattr(config, "inference"):
             config.inference.batch_size = 1
 
@@ -183,7 +272,7 @@ def separate_stems_msst(
     if len(mix.shape) == 1:
         mix = np.stack([mix, mix], axis=0)
 
-    print(f"⏳ Separating stems on {device.type.upper()}... (Instruments: {', '.join(instruments)})")
+    print(f"⏳ Separating stems on {dev_type.upper()}... (Instruments: {', '.join(instruments)})")
 
     # Normalize audio if requested in config
     norm_params = None
@@ -204,18 +293,23 @@ def separate_stems_msst(
             bigshifts=shifts_val
         )
 
-    # Save output stems
-    saved_stems = {}
-    for inst_name in instruments:
-        if inst_name in waveforms:
-            estimates = waveforms[inst_name]
-            if norm_params is not None and "normalize" in getattr(config, "inference", {}):
-                if config.inference["normalize"] is True:
-                    estimates = denormalize_audio(estimates, norm_params)
+        # If model only extracted a target instrument (e.g. drums), compute 'other' = mix - target
+        if getattr(config.training, "target_instrument", None) and len(instruments) == 1 and instruments[0] in waveforms and "other" not in waveforms:
+            waveforms["other"] = mix - waveforms[instruments[0]]
+            instruments.append("other")
 
-            out_file = os.path.join(track_output_dir, f"{inst_name}.wav")
-            _save_waveform(estimates, sample_rate, out_file)
-            saved_stems[inst_name] = out_file
+        # Save output stems
+        saved_stems = {}
+        for inst_name in instruments:
+            if inst_name in waveforms:
+                estimates = waveforms[inst_name]
+                if norm_params is not None and "normalize" in getattr(config, "inference", {}):
+                    if config.inference["normalize"] is True:
+                        estimates = denormalize_audio(estimates, norm_params)
+
+                out_file = os.path.join(track_output_dir, f"{inst_name}.wav")
+                _save_waveform(estimates, sample_rate, out_file)
+                saved_stems[inst_name] = out_file
 
     # Explicit teardown of heavy tensors and model graph to immediately reclaim RAM
     try:
@@ -224,10 +318,10 @@ def separate_stems_msst(
         del waveforms
         del mix
         gc.collect()
-        if device.type == "mps" and hasattr(torch, "mps"):
+        if dev_type == "mps" and hasattr(torch, "mps"):
             torch.mps.synchronize()
             torch.mps.empty_cache()
-        elif device.type == "cuda" and hasattr(torch, "cuda"):
+        elif dev_type == "cuda" and hasattr(torch, "cuda"):
             torch.cuda.synchronize()
             torch.cuda.empty_cache()
     except Exception:
