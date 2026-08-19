@@ -39,14 +39,14 @@ def download_ffmpeg_windows(dest_folder: str | None = None) -> str:
     os.makedirs(dest_folder_abs, exist_ok=True)
 
     stop_event = threading.Event()
-    spinner_thread = threading.Thread(target=spinner, args=("Downloading ffmpeg", stop_event))
+    spinner_thread = threading.Thread(target=spinner, args=("Downloading ffmpeg", stop_event), daemon=True)
     spinner_thread.start()
     try:
         if not os.path.exists(zip_path):
             urlretrieve(url, zip_path)
     finally:
         stop_event.set()
-        spinner_thread.join()
+        spinner_thread.join(timeout=1.0)
 
     print(f"📂 Extracting ffmpeg to {dest_folder_abs} ...")
     with zipfile.ZipFile(zip_path, "r") as zip_ref:

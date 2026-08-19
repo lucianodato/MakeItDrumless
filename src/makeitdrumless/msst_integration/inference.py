@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+import gc
 import tempfile
 from typing import Optional, List, Dict
 try:
@@ -20,6 +21,8 @@ except ImportError:
 
 try:
     import torch
+    if hasattr(torch, "set_num_threads"):
+        torch.set_num_threads(min(4, os.cpu_count() or 4))
 except ImportError:
     torch = None
 
@@ -85,10 +88,15 @@ def separate_stems_msst(
                 existing_stems[stem_name] = os.path.join(track_output_dir, wav)
             return existing_stems
 
-    # 1. Apply MPS & memory patches
+    # 1. Ensure local msst directory is prioritized if available in repo
+    local_msst_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "msst"))
+    if os.path.exists(local_msst_dir) and local_msst_dir not in sys.path:
+        sys.path.insert(0, local_msst_dir)
+
+    # 2. Apply MPS & memory patches
     apply_all_patches()
 
-    # 2. Try importing MSST utils
+    # 3. Try importing MSST utils
     try:
         from utils.settings import get_model_from_config
         from utils.model_utils import prefer_target_instrument, bigshifts_wrapper
@@ -124,6 +132,7 @@ def separate_stems_msst(
     os.environ["MPLCONFIGDIR"] = mpl_dir
     os.environ["PYTORCH_MPS_HIGH_WATERMARK_RATIO"] = "0.0"
     os.environ["PYTORCH_MPS_LOW_WATERMARK_RATIO"] = "0.0"
+    os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
     os.makedirs(mpl_dir, exist_ok=True)
 
     # Instantiate model and load configuration
@@ -142,15 +151,6 @@ def separate_stems_msst(
             config.audio.chunk_size = chunk_size
         if hasattr(config, "inference"):
             config.inference.chunk_size = chunk_size
-    elif device.type == "mps":
-        # On Apple Silicon MPS, prevent excessive VRAM allocations for huge models
-        current_chunk = getattr(getattr(config, "audio", None), "chunk_size", None) or getattr(getattr(config, "inference", {}), "chunk_size", None)
-        if current_chunk and current_chunk > 132300:
-            print(f"💡 Automatically using optimized chunk size for Apple Silicon: {current_chunk} -> 132300 (3s)")
-            if hasattr(config, "audio"):
-                config.audio.chunk_size = 132300
-            if hasattr(config, "inference"):
-                config.inference.chunk_size = 132300
 
     if overlap is not None:
         if hasattr(config, "inference"):
@@ -216,6 +216,22 @@ def separate_stems_msst(
             out_file = os.path.join(track_output_dir, f"{inst_name}.wav")
             _save_waveform(estimates, sample_rate, out_file)
             saved_stems[inst_name] = out_file
+
+    # Explicit teardown of heavy tensors and model graph to immediately reclaim RAM
+    try:
+        del model
+        del ckpt_data
+        del waveforms
+        del mix
+        gc.collect()
+        if device.type == "mps" and hasattr(torch, "mps"):
+            torch.mps.synchronize()
+            torch.mps.empty_cache()
+        elif device.type == "cuda" and hasattr(torch, "cuda"):
+            torch.cuda.synchronize()
+            torch.cuda.empty_cache()
+    except Exception:
+        pass
 
     elapsed = time.time() - start_time
     print(f"⏱️  Separation finished in {elapsed:.2f} seconds.")

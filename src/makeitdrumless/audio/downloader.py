@@ -209,14 +209,14 @@ def download_audio(link: str, output_folder: Optional[str] = None) -> Tuple[str,
     # Download
     print(f"⚙️  Downloading audio from URL: {link}...")
     stop_event = threading.Event()
-    spinner_thread = threading.Thread(target=spinner, args=("Downloading audio", stop_event))
+    spinner_thread = threading.Thread(target=spinner, args=("Downloading audio", stop_event), daemon=True)
     spinner_thread.start()
     try:
         with YoutubeDL(ydl_download_opts) as ydl:
             info = ydl.extract_info(link, download=True)
     finally:
         stop_event.set()
-        spinner_thread.join()
+        spinner_thread.join(timeout=1.0)
 
     print(f"✅ Audio downloaded: {expected_file}")
     return expected_file, info_dict

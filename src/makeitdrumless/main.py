@@ -3,7 +3,14 @@ import sys
 import argparse
 import time
 import shutil
+import signal
+import atexit
+import warnings
 from pathlib import Path
+
+# Silence multiprocessing resource tracker shutdown warnings during abrupt cancellation
+warnings.filterwarnings("ignore", category=UserWarning, module="multiprocessing.resource_tracker")
+warnings.filterwarnings("ignore", message=".*resource_tracker:.*")
 
 from makeitdrumless.msst_integration.models import (
     list_available_models,
@@ -27,7 +34,57 @@ from makeitdrumless.ffmpeg.manager import setup_ffmpeg_binary
 from makeitdrumless.ytmusic import upload_drumless_track, setup_ytmusic_auth
 
 
+def _emergency_cleanup(signum=None, frame=None):
+    """Instantly terminates the main process, resource tracker, and all child processes."""
+    sys.stdout.write("\n\n⚠️  Process cancelled. Releasing all RAM and returning to terminal...\n")
+    sys.stdout.flush()
+
+    # 1. Kill the multiprocessing resource_tracker child process (which detached to its own session)
+    try:
+        from multiprocessing import resource_tracker
+        tracker = getattr(resource_tracker, "_resource_tracker", None)
+        if tracker is not None:
+            tracker_pid = getattr(tracker, "_pid", None)
+            if tracker_pid is not None and tracker_pid > 0:
+                try:
+                    os.kill(tracker_pid, signal.SIGKILL)
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    # 2. Kill the entire process group (any other child workers or subprocesses)
+    try:
+        os.killpg(os.getpgid(os.getpid()), signal.SIGKILL)
+    except Exception:
+        pass
+
+    # 3. Terminate self
+    os.kill(os.getpid(), signal.SIGKILL)
+
+
+def register_signal_handlers():
+    """Traps all interrupt and suspend signals (Ctrl+C, Ctrl+Z, SIGQUIT, SIGTERM, SIGHUP)."""
+    for sig in [signal.SIGINT, signal.SIGTERM, signal.SIGQUIT, signal.SIGHUP]:
+        try:
+            signal.signal(sig, _emergency_cleanup)
+        except Exception:
+            pass
+
+    if hasattr(signal, "SIGTSTP"):
+        try:
+            signal.signal(signal.SIGTSTP, _emergency_cleanup)
+        except Exception:
+            pass
+
+
+# Register immediately on module load
+register_signal_handlers()
+
+
 def main():
+    register_signal_handlers()
+
     print("\n🥁 === MakeItDrumless === 🥁\n")
 
     parser = argparse.ArgumentParser(
@@ -285,6 +342,23 @@ Examples:
     print(f"  🎙️ Original Audio:  {final_original_wav}")
     print(f"  🎛️ Separated Stems: {stems_dir}\n")
 
+    # Final cleanup to ensure no memory or background handles remain
+    import gc
+    gc.collect()
+    try:
+        import torch
+        if hasattr(torch, "mps") and torch.backends.mps.is_available():
+            torch.mps.synchronize()
+            torch.mps.empty_cache()
+    except Exception:
+        pass
+
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        _emergency_cleanup(signal.SIGINT)
+    except Exception as e:
+        print(f"\n❌ Fatal Error: {e}")
+        _emergency_cleanup(signal.SIGTERM)
