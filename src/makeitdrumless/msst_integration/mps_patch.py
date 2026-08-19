@@ -1,12 +1,18 @@
 """Runtime patches for MSST to enable Apple Silicon MPS acceleration, memory-safe LSTM batching, and robust kwargs filtering."""
 
 import inspect
-import torch
-import torch.nn as nn
+try:
+    import torch
+    import torch.nn as nn
+except ImportError:
+    torch = None
+    nn = None
 
 
 def apply_all_patches():
     """Applies all Apple Silicon MPS and stability optimizations to MSST modules in memory."""
+    if torch is None:
+        return
     patch_dualpath_rnn()
     patch_demix_mps()
     patch_settings_kwargs()

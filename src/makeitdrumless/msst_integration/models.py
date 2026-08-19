@@ -179,12 +179,25 @@ def download_file(url: str, dest_path: str, description: str = "Downloading"):
     os.rename(temp_dest, dest_path)
 
 
+def normalize_preset_name(model_name: str) -> str:
+    """Normalizes preset name for robust matching."""
+    name = model_name.strip().lower().replace("-", "_")
+    if name in MODEL_REGISTRY:
+        return name
+    # Check case-insensitive match
+    for k in MODEL_REGISTRY:
+        if k.lower() == name:
+            return k
+    return model_name.strip()
+
+
 def is_model_downloaded(model_name: str) -> bool:
     """Checks whether both config and checkpoint files are present locally."""
-    if model_name not in MODEL_REGISTRY:
+    norm_name = normalize_preset_name(model_name)
+    if norm_name not in MODEL_REGISTRY:
         return False
-    entry = MODEL_REGISTRY[model_name]
-    cache_dir = get_model_cache_dir(model_name)
+    entry = MODEL_REGISTRY[norm_name]
+    cache_dir = get_model_cache_dir(norm_name)
     config_name = os.path.basename(entry["config_url"])
     ckpt_name = os.path.basename(entry["checkpoint_url"])
     config_path = os.path.join(cache_dir, config_name)
@@ -240,16 +253,20 @@ def download_model_preset(model_name: str) -> Tuple[str, str, str]:
     Returns:
         (model_type, config_path, checkpoint_path)
     """
-    preset = MODEL_REGISTRY.get(model_name)
+    norm_name = normalize_preset_name(model_name)
+    preset = MODEL_REGISTRY.get(norm_name)
     if not preset:
         dyn = fetch_github_release_models()
         if model_name in dyn:
             preset = dyn[model_name]
+            norm_name = model_name
+        elif norm_name in dyn:
+            preset = dyn[norm_name]
         else:
             available = ", ".join(MODEL_REGISTRY.keys())
             raise ValueError(f"Unknown model preset '{model_name}'. Available presets: {available}")
 
-    cache_dir = get_model_cache_dir(model_name)
+    cache_dir = get_model_cache_dir(norm_name)
     os.makedirs(cache_dir, exist_ok=True)
 
     config_filename = os.path.basename(preset["config_url"])
@@ -259,14 +276,14 @@ def download_model_preset(model_name: str) -> Tuple[str, str, str]:
     checkpoint_path = os.path.abspath(os.path.join(cache_dir, ckpt_filename))
 
     if not os.path.exists(config_path) or os.path.getsize(config_path) == 0:
-        print(f"📥 Downloading config for {model_name}...")
-        download_file(preset["config_url"], config_path, description=f"{model_name} (Config)")
+        print(f"📥 Downloading config for {norm_name}...")
+        download_file(preset["config_url"], config_path, description=f"{norm_name} (Config)")
     else:
         print(f"✅ Config found: {config_filename}")
 
     if not os.path.exists(checkpoint_path) or os.path.getsize(checkpoint_path) == 0:
-        print(f"📥 Downloading model weights for {model_name} (this may take a few minutes)...")
-        download_file(preset["checkpoint_url"], checkpoint_path, description=f"{model_name} (Weights)")
+        print(f"📥 Downloading model weights for {norm_name} (this may take a few minutes)...")
+        download_file(preset["checkpoint_url"], checkpoint_path, description=f"{norm_name} (Weights)")
     else:
         print(f"✅ Checkpoint found: {ckpt_filename}")
 

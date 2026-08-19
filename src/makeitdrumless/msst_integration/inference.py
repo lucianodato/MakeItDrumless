@@ -3,10 +3,26 @@ import sys
 import time
 import tempfile
 from typing import Optional, List, Dict
-import numpy as np
-import soundfile as sf
-import librosa
-import torch
+try:
+    import numpy as np
+except ImportError:
+    np = None
+
+try:
+    import soundfile as sf
+except ImportError:
+    sf = None
+
+try:
+    import librosa
+except ImportError:
+    librosa = None
+
+try:
+    import torch
+except ImportError:
+    torch = None
+
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -47,6 +63,28 @@ def separate_stems_msst(
     Returns:
         Dict mapping stem names (e.g. 'vocals', 'drums', 'bass', 'other') to their saved file paths.
     """
+    # 0. Early check if stems are already separated in output directory
+    if output_folder:
+        track_output_dir = os.path.abspath(output_folder)
+    else:
+        model_tag = model_preset if not checkpoint_path else os.path.splitext(os.path.basename(checkpoint_path))[0]
+        clean_model_tag = "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in model_tag)
+        track_name = os.path.splitext(os.path.basename(input_audio_path))[0].replace(" (Original)", "")
+        track_output_dir = os.path.join(tempfile.gettempdir(), "makeitdrumless", "separated", f"{track_name}_{clean_model_tag}")
+
+    existing_stems = {}
+    if not force and os.path.exists(track_output_dir):
+        wav_files = [
+            f for f in os.listdir(track_output_dir)
+            if f.endswith(".wav") and os.path.getsize(os.path.join(track_output_dir, f)) > 0
+        ]
+        if len(wav_files) >= 1:
+            print(f"✅ Stems already separated with {model_preset} in {track_output_dir}")
+            for wav in wav_files:
+                stem_name = os.path.splitext(wav)[0]
+                existing_stems[stem_name] = os.path.join(track_output_dir, wav)
+            return existing_stems
+
     # 1. Apply MPS & memory patches
     apply_all_patches()
 
@@ -77,27 +115,7 @@ def separate_stems_msst(
     if not os.path.exists(checkpoint_path):
         raise FileNotFoundError(f"Model checkpoint file not found: {checkpoint_path}")
 
-    model_tag = model_preset if not checkpoint_path else os.path.splitext(os.path.basename(checkpoint_path))[0]
-    clean_model_tag = "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in model_tag)
-
-    track_name = os.path.splitext(os.path.basename(input_audio_path))[0]
-    
-    if output_folder:
-        track_output_dir = os.path.abspath(output_folder)
-    else:
-        track_output_dir = os.path.join(tempfile.gettempdir(), "makeitdrumless", "separated", f"{track_name}_{clean_model_tag}")
     os.makedirs(track_output_dir, exist_ok=True)
-
-    # Check if stems are already separated with this model
-    existing_stems = {}
-    if not force and os.path.exists(track_output_dir):
-        wav_files = [f for f in os.listdir(track_output_dir) if f.endswith(".wav")]
-        if len(wav_files) >= 2:
-            print(f"✅ Stems already separated with {model_preset} in {track_output_dir}")
-            for wav in wav_files:
-                stem_name = os.path.splitext(wav)[0]
-                existing_stems[stem_name] = os.path.join(track_output_dir, wav)
-            return existing_stems
 
     print(f"\n🎛️  Running MSST Separation using model: {os.path.basename(checkpoint_path)}")
     start_time = time.time()

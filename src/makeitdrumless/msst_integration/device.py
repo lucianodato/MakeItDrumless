@@ -1,7 +1,10 @@
-import torch
+try:
+    import torch
+except ImportError:
+    torch = None
 
 
-def get_optimal_device(requested_device: str = "auto") -> torch.device:
+def get_optimal_device(requested_device: str = "auto"):
     """
     Resolves the optimal torch.device for inference based on hardware availability
     and user preferences.
@@ -12,6 +15,10 @@ def get_optimal_device(requested_device: str = "auto") -> torch.device:
     Returns:
         torch.device configured for the optimal or requested target.
     """
+    if torch is None:
+        raise ImportError(
+            "PyTorch is not installed. Please install PyTorch to run neural network source separation."
+        )
     req = (requested_device or "auto").strip().lower()
 
     if req == "mps":
@@ -46,12 +53,15 @@ def get_optimal_device(requested_device: str = "auto") -> torch.device:
     return torch.device("cpu")
 
 
-def print_device_info(device: torch.device):
+def print_device_info(device):
     """Print user-friendly information about the active execution device."""
-    if device.type == "mps":
+    if device is None:
+        return
+    dev_type = getattr(device, "type", str(device))
+    if dev_type == "mps":
         print("⚡ Accelerated by Apple Silicon GPU via Metal Performance Shaders (MPS)")
-    elif device.type == "cuda":
-        gpu_name = torch.cuda.get_device_name(0) if torch.cuda.is_available() else "CUDA"
+    elif dev_type == "cuda":
+        gpu_name = torch.cuda.get_device_name(0) if torch and torch.cuda.is_available() else "CUDA"
         print(f"⚡ Accelerated by NVIDIA GPU: {gpu_name}")
     else:
         print("💻 Running inference on CPU (Hardware acceleration not detected)")

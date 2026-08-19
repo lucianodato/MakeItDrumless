@@ -8,10 +8,16 @@ from pathlib import Path
 from makeitdrumless.msst_integration.models import (
     list_available_models,
     download_model_preset,
+    normalize_preset_name,
     MODEL_REGISTRY,
 )
 from makeitdrumless.msst_integration.inference import separate_stems_msst
-from makeitdrumless.audio.downloader import get_audio_input, get_default_output_base
+from makeitdrumless.audio.downloader import (
+    get_audio_input,
+    get_default_output_base,
+    clean_audio_title,
+    parse_artist_title,
+)
 from makeitdrumless.audio.processing import (
     mix_stems_without_drums,
     set_mp3_metadata,
@@ -180,13 +186,12 @@ Examples:
         out_title = info.get("track") or info.get("title")
         out_artist = info.get("artist") or info.get("uploader") or info.get("channel")
         if not out_artist and out_title and ' - ' in out_title:
-            out_artist, out_title = out_title.split(' - ', 1)
+            out_artist, out_title = parse_artist_title(out_title)
 
     if out_title:
-        safe_title = "".join(c for c in out_title if c not in r'\/:*?"<>|').strip()
+        safe_title = clean_audio_title(out_title)
     else:
-        raw_name = os.path.splitext(os.path.basename(initial_audio_wav))[0].replace(" (Original)", "")
-        safe_title = "".join(c for c in raw_name if c not in r'\/:*?"<>|').strip()
+        safe_title = clean_audio_title(initial_audio_wav)
 
     # Create dedicated song output directory: ~/Music/MakeItDrumless/<Safe Title>/
     track_dir = os.path.join(base_output_dir, safe_title)
@@ -205,7 +210,7 @@ Examples:
 
     # 8. Run separation (Ensemble or Single Model)
     if args.ensemble:
-        ensemble_model_names = [m.strip() for m in args.ensemble.split(",") if m.strip()]
+        ensemble_model_names = [normalize_preset_name(m.strip()) for m in args.ensemble.split(",") if m.strip()]
         if len(ensemble_model_names) < 2:
             print("⚠️  --ensemble requires at least 2 comma-separated models. Running in single model mode.")
             ensemble_model_names = [ensemble_model_names[0]]
@@ -229,8 +234,6 @@ Examples:
                 input_audio_path=final_original_wav,
                 output_folder=m_stems_dir,
                 model_preset=m_name,
-                config_path=args.config,
-                checkpoint_path=args.checkpoint,
                 chunk_size=args.chunk_size,
                 overlap=args.overlap,
                 shifts=args.shifts,
@@ -240,20 +243,21 @@ Examples:
             stems_list.append(m_stems)
 
         # Blend ensemble
-        ensemble_tag = "_".join("".join(c if c.isalnum() else "_" for c in m) for m in ensemble_model_names)
+        ensemble_tag = "_".join("".join(c if c.isalnum() or c in ("-", "_") else "_" for c in m) for m in ensemble_model_names)
         stems_dir = os.path.join(track_dir, f"stems_ensemble_{ensemble_tag}")
-        stems = ensemble_stems(stems_list, weights=ensemble_weights, output_dir=stems_dir)
+        stems = ensemble_stems(stems_list, weights=ensemble_weights, output_dir=stems_dir, force=args.force)
         model_display_name = f"Ensemble ({'+'.join(ensemble_model_names)})"
     else:
         # Single model path
-        model_tag = args.model if not args.checkpoint else os.path.splitext(os.path.basename(args.checkpoint))[0]
+        norm_single_preset = normalize_preset_name(args.model)
+        model_tag = norm_single_preset if not args.checkpoint else os.path.splitext(os.path.basename(args.checkpoint))[0]
         clean_model_tag = "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in model_tag)
         stems_dir = os.path.join(track_dir, f"stems_{clean_model_tag}")
 
         stems = separate_stems_msst(
             input_audio_path=final_original_wav,
             output_folder=stems_dir,
-            model_preset=args.model,
+            model_preset=norm_single_preset,
             config_path=args.config,
             checkpoint_path=args.checkpoint,
             chunk_size=args.chunk_size,
@@ -262,7 +266,7 @@ Examples:
             device_name=args.device,
             force=args.force,
         )
-        model_display_name = args.model
+        model_display_name = norm_single_preset
 
     # 9. Mix non-drum stems into drumless MP3
     out_mp3_path = os.path.join(track_dir, f"{safe_title} (Drumless).mp3")

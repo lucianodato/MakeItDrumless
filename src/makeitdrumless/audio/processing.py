@@ -1,8 +1,17 @@
 import os
 from typing import Union, Dict, Optional
-from pydub import AudioSegment
-from mutagen.mp3 import MP3
-from mutagen.id3 import ID3, TIT2, TPE1, COMM
+
+try:
+    from pydub import AudioSegment
+except ImportError:
+    AudioSegment = None
+
+try:
+    from mutagen.mp3 import MP3
+    from mutagen.id3 import ID3, TIT2, TPE1, COMM
+except ImportError:
+    MP3 = None
+    ID3 = TIT2 = TPE1 = COMM = None
 
 # Stem names to exclude when creating a drumless mix
 DRUM_STEM_NAMES = {"drums", "drum", "kick", "snare", "hh", "toms", "cymbals", "percussion"}
@@ -136,6 +145,7 @@ def ensemble_stems(
     stems_list: list,
     weights: Optional[list] = None,
     output_dir: str = "",
+    force: bool = False,
 ) -> Dict[str, str]:
     """
     Combines stem outputs from multiple models via weighted linear averaging.
@@ -144,15 +154,31 @@ def ensemble_stems(
         stems_list: List of dictionaries mapping stem_name -> wav_file_path.
         weights: List of float weights for each model. Defaults to equal weights.
         output_dir: Output directory where the ensembled stems will be saved.
+        force: If True, force re-blending even if ensembled stems exist.
 
     Returns:
         Dict mapping stem names to the ensembled stem file paths.
     """
-    import soundfile as sf
-    import numpy as np
-
     if not stems_list:
         raise ValueError("stems_list cannot be empty.")
+
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Check if ensembled stems already exist
+    if not force and output_dir and os.path.exists(output_dir):
+        existing_wavs = [
+            f for f in os.listdir(output_dir)
+            if f.endswith(".wav") and os.path.getsize(os.path.join(output_dir, f)) > 0
+        ]
+        if len(existing_wavs) >= 1:
+            print(f"✅ Ensembled stems already exist in {output_dir}")
+            return {
+                os.path.splitext(f)[0]: os.path.join(output_dir, f)
+                for f in existing_wavs
+            }
+
+    import soundfile as sf
+    import numpy as np
 
     n_models = len(stems_list)
     if weights is None:
@@ -161,7 +187,6 @@ def ensemble_stems(
         total_w = sum(weights)
         norm_weights = [w / total_w for w in weights]
 
-    os.makedirs(output_dir, exist_ok=True)
     all_stem_names = sorted(list(set().union(*(s.keys() for s in stems_list))))
 
     print(f"\n🎛️  Blending ensemble of {n_models} models with weights: {[round(w, 2) for w in norm_weights]}...")
