@@ -22,24 +22,39 @@ Powered by **[Music-Source-Separation-Training (MSST)](https://github.com/ZFTurb
 ### 1. Prerequisites
 
 - **FFmpeg**: On macOS: `brew install ffmpeg`
-- **uv** (recommended): `curl -LsSf https://astral.sh/uv/install.sh | sh` (or `brew install uv`)
+- **uv** (recommended): `curl -LsSf https://astral.sh/uv/install.sh | sh` (or `brew install uv`) or **pipx** (`brew install pipx`)
 
 ### 2. Install as a Global CLI Tool
 
-Clone the repository and install it globally with `uv tool`:
+You do not need to clone the repository. You can install it directly into an isolated environment on your system PATH:
+
+```bash
+# Using uv (recommended, fastest):
+uv tool install git+https://github.com/lucianodato/MakeItDrumless.git
+
+# Or using pipx:
+pipx install git+https://github.com/lucianodato/MakeItDrumless.git
+```
+
+Now `makeitdrumless` is available everywhere in your terminal!
+
+#### To update to the latest version:
+```bash
+uv tool upgrade makeitdrumless
+# or
+pipx upgrade makeitdrumless
+```
+
+### 🛠️ For Development / Local Editing
+
+If you want to contribute or modify the codebase locally:
 
 ```bash
 git clone https://github.com/lucianodato/MakeItDrumless.git
 cd MakeItDrumless
 
-# Install globally into your PATH:
-uv tool install .
-
-# Or install in editable mode for active development:
 uv tool install --editable .
 ```
-
-Now `makeitdrumless` is available everywhere in your terminal!
 
 ---
 
