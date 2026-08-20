@@ -20,6 +20,7 @@ from makeitdrumless.msst_integration.device import get_optimal_device, is_mlx_su
 from msst.utils.mlx_engine import is_mlx_available, can_run_on_mlx
 
 
+@unittest.skipUnless(is_mlx_supported(), "Apple MLX is not installed in active environment")
 class TestMLXInference(unittest.TestCase):
 
     def test_mlx_device_detection(self):
