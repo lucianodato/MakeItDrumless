@@ -41,8 +41,6 @@ class TestMLXInference(unittest.TestCase):
         # Supported natively
         can_roformer, _ = can_run_on_mlx("bs_roformer")
         self.assertTrue(can_roformer)
-        can_melband, _ = can_run_on_mlx("mel_band_roformer")
-        self.assertTrue(can_melband)
         can_scnet, _ = can_run_on_mlx("scnet")
         self.assertTrue(can_scnet)
         can_htdemucs, _ = can_run_on_mlx("htdemucs")
@@ -51,6 +49,10 @@ class TestMLXInference(unittest.TestCase):
         self.assertTrue(can_demucs)
 
         # Unsupported in clean-sheet MLX (should fallback to PyTorch MPS)
+        can_melband, reason_melband = can_run_on_mlx("mel_band_roformer")
+        self.assertFalse(can_melband)
+        self.assertIn("mel", reason_melband.lower())
+
         can_bandit, reason_bandit = can_run_on_mlx("bandit")
         self.assertFalse(can_bandit)
         self.assertIn("bandit", reason_bandit.lower())

@@ -94,6 +94,15 @@ MODEL_REGISTRY: Dict[str, Dict[str, Any]] = {
         "checkpoint_url": "https://github.com/ZFTurbo/Music-Source-Separation-Training/releases/download/v1.0.18/fused_model_bs_conformer_sdr_9.18.ckpt",
     },
 
+    # --- Decrowd & Audience Models ---
+    "mel_band_roformer_crowd": {
+        "description": "Mel-Band RoFormer Crowd by aufr33 & viperx (2 stems: crowd, other) - SOTA Audience & Live Ambience isolation",
+        "model_type": "mel_band_roformer",
+        "stems": ["crowd", "other"],
+        "config_url": "https://github.com/ZFTurbo/Music-Source-Separation-Training/releases/download/v.1.0.4/model_mel_band_roformer_crowd.yaml",
+        "checkpoint_url": "https://github.com/ZFTurbo/Music-Source-Separation-Training/releases/download/v.1.0.4/mel_band_roformer_crowd_aufr33_viperx_sdr_8.7144.ckpt",
+    },
+
     # --- Demucs & HTDemucs Architectures ---
     "htdemucs": {
         "description": "HTDemucs4 Hybrid Transformer (4 stems: vocals, bass, drums, other) - SDR 9.16",

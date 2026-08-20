@@ -57,14 +57,32 @@ makeitdrumless "/path/to/song.mp3" --model scnet_xl
 # 3. Band-Split RoFormer (SDR 9.65):
 makeitdrumless "/path/to/song.mp3" --model bs_roformer
 
-# 4. Multi-Model Ensemble (Blends SCNet Large + BS-RoFormer):
+# 4. Live Tracks: Audience / Crowd Removal Preprocessing (Preserves live atmosphere in backing track):
+makeitdrumless "https://www.youtube.com/watch?v=LIVE_CONCERT_ID" --remove-audience
+
+# 5. Multi-Model Ensemble (Blends SCNet Large + BS-RoFormer):
 makeitdrumless "/path/to/song.mp3" --ensemble "scnet_large_starrytong,bs_roformer" --ensemble-weights "0.5,0.5"
 
-# 5. Generate and automatically upload to YouTube Music library:
+# 6. Generate and automatically upload to YouTube Music library:
 makeitdrumless "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --upload-ytmusic
 
-# 6. List all available models and their download status:
+# 7. List all available models and their download status:
 makeitdrumless --list-models
+```
+
+---
+
+## 👥 Live Concerts & Audience Removal Preprocessing
+
+When working with live concert recordings or crowd-heavy tracks, audience cheers and applause can interfere with drum transient detection.
+
+By passing `--remove-audience` (or `--decrowd`), `makeitdrumless` automatically:
+1. Preprocesses the live track with the **Mel-Band RoFormer Crowd** model (`mel_band_roformer_crowd`) to isolate crowd cheer and applause from the live music.
+2. Performs drum separation on the clean, decrowded music.
+3. **Recombines the isolated crowd ambience** with the non-drum stems in the final drumless mix—so you get crisp, bleed-free drum removal while keeping the full live concert energy!
+
+```bash
+makeitdrumless "/path/to/live_track.mp3" --remove-audience
 ```
 
 ---
@@ -158,6 +176,7 @@ makeitdrumless "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --model scnet_small
 | `bs_drums_gilliaaan` | BS-RoFormer | 2 stems | High cymbal/hihat precision (Duality by Gilliaaan) |
 | `bs_roformer` | BS-RoFormer | 4 stems | Band-Split RoFormer (SDR 9.65) |
 | `bs_conformer` | BS-Conformer | 4 stems | Conformer-based 4-stem demixing (SDR 9.18) |
+| `mel_band_roformer_crowd` | Mel-Band RoFormer | 2 stems | SOTA Audience/Live Crowd removal by aufr33 & viperx (`crowd`, `other`) |
 | `htdemucs4` | HTDemucs | 4 stems | Demucs v4 Hybrid Transformer (SDR 9.16) |
 | `htdemucs4_6s` | HTDemucs | 6 stems | 6-stem separation (includes piano & guitar) |
 | `demucs3_mmi` | Demucs | 4 stems | Demucs v3 MMI model (SDR 8.88) |

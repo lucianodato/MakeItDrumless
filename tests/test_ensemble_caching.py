@@ -162,6 +162,59 @@ class TestEnsembleCaching(unittest.TestCase):
         self.assertIn("drums", blended)
         self.assertEqual(blended["drums"], os.path.join(ens_dir, "drums.wav"))
 
+    def test_mel_band_roformer_crowd_registry_and_normalization(self):
+        self.assertEqual(normalize_preset_name("mel_band_roformer_crowd"), "mel_band_roformer_crowd")
+        self.assertEqual(normalize_preset_name("mel-band-roformer-crowd"), "mel_band_roformer_crowd")
+        self.assertIn("mel_band_roformer_crowd", MODEL_REGISTRY)
+        crowd_entry = MODEL_REGISTRY["mel_band_roformer_crowd"]
+        self.assertEqual(crowd_entry["model_type"], "mel_band_roformer")
+        self.assertIn("crowd", crowd_entry["stems"])
+        self.assertIn("other", crowd_entry["stems"])
+
+    def test_audience_removal_preprocessing_flow(self):
+        track_dir = os.path.join(self.base_dir, "LiveConcert")
+        song_wav = os.path.join(track_dir, "LiveConcert (Original).wav")
+        write_dummy_wav(song_wav)
+
+        # Pre-create crowd separation stems
+        crowd_dir = os.path.join(track_dir, "stems_audience_mel_band_roformer_crowd")
+        crowd_path = os.path.join(crowd_dir, "crowd.wav")
+        other_path = os.path.join(crowd_dir, "other.wav")
+        write_dummy_wav(crowd_path)
+        write_dummy_wav(other_path)
+
+        # 1. Test crowd separation cache hit
+        aud_stems = separate_stems_msst(
+            input_audio_path=song_wav,
+            output_folder=crowd_dir,
+            model_preset="mel_band_roformer_crowd",
+            force=False,
+        )
+        self.assertIn("crowd", aud_stems)
+        self.assertIn("other", aud_stems)
+
+        # 2. Test drum separation cache hit on decrowded audio
+        drum_dir = os.path.join(track_dir, "stems_scnet_large_starrytong")
+        write_dummy_wav(os.path.join(drum_dir, "drums.wav"))
+        write_dummy_wav(os.path.join(drum_dir, "vocals.wav"))
+        write_dummy_wav(os.path.join(drum_dir, "bass.wav"))
+        write_dummy_wav(os.path.join(drum_dir, "other.wav"))
+
+        drum_stems = separate_stems_msst(
+            input_audio_path=other_path,
+            output_folder=drum_dir,
+            model_preset="scnet_large_starrytong",
+            force=False,
+        )
+        self.assertIn("drums", drum_stems)
+
+        # 3. Retain crowd in final stems dict
+        drum_stems["crowd"] = aud_stems["crowd"]
+        self.assertIn("crowd", drum_stems)
+        self.assertIn("vocals", drum_stems)
+        self.assertIn("drums", drum_stems)
+
 
 if __name__ == "__main__":
     unittest.main()
+

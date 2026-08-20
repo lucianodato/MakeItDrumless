@@ -178,6 +178,17 @@ Examples:
         help="Force re-running separation and overwrite existing cached stems for this model."
     )
     parser.add_argument(
+        "--remove-audience", "--decrowd",
+        action="store_true",
+        dest="remove_audience",
+        help="Perform audience/crowd removal preprocessing on live tracks before drum separation (preserves audience in final drumless mix)."
+    )
+    parser.add_argument(
+        "--audience-model",
+        default="mel_band_roformer_crowd",
+        help="Model preset for audience removal preprocessing (default: 'mel_band_roformer_crowd')."
+    )
+    parser.add_argument(
         "--upload-ytmusic", "-u",
         action="store_true",
         help="Automatically upload the generated drumless track to your YouTube Music library."
@@ -265,7 +276,52 @@ Examples:
                 except Exception:
                     pass
 
-    # 8. Run separation (Ensemble or Single Model)
+    # 8. Optional Audience / Crowd Removal Preprocessing
+    separation_input_wav = final_original_wav
+    isolated_crowd_stem = None
+    decrowded_wav = None
+
+    if args.remove_audience:
+        norm_aud_preset = normalize_preset_name(args.audience_model)
+        aud_tag = "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in norm_aud_preset)
+        crowd_stems_dir = os.path.join(track_dir, f"stems_audience_{aud_tag}")
+        decrowded_wav = os.path.join(track_dir, f"{safe_title} (Decrowded).wav")
+
+        print(f"\n👥 Performing Audience / Crowd Removal Preprocessing using '{norm_aud_preset}'...")
+        audience_stems = separate_stems_msst(
+            input_audio_path=final_original_wav,
+            output_folder=crowd_stems_dir,
+            model_preset=norm_aud_preset,
+            chunk_size=args.chunk_size,
+            overlap=args.overlap,
+            shifts=args.shifts,
+            device_name=args.device,
+            force=args.force,
+        )
+
+        # Stems returned: 'crowd' (applause/cheering) and 'other' (cleaned music mix)
+        cleaned_music_path = audience_stems.get("other") or audience_stems.get("dry")
+        if not cleaned_music_path and "crowd" in audience_stems:
+            # Fallback if other stem name used
+            for k, p in audience_stems.items():
+                if k != "crowd" and os.path.exists(p):
+                    cleaned_music_path = p
+                    break
+
+        if "crowd" in audience_stems and os.path.exists(audience_stems["crowd"]):
+            isolated_crowd_stem = audience_stems["crowd"]
+            print(f"  + Isolated crowd ambience: {isolated_crowd_stem}")
+
+        if cleaned_music_path and os.path.exists(cleaned_music_path):
+            if os.path.abspath(cleaned_music_path) != os.path.abspath(decrowded_wav):
+                if not os.path.exists(decrowded_wav) or args.force:
+                    shutil.copy2(cleaned_music_path, decrowded_wav)
+            separation_input_wav = decrowded_wav
+            print(f"  + Decrowded music input: {decrowded_wav}")
+        else:
+            print("⚠️  Could not find decrowded music stem. Falling back to original audio for drum separation.")
+
+    # 9. Run separation (Ensemble or Single Model)
     if args.ensemble:
         ensemble_model_names = [normalize_preset_name(m.strip()) for m in args.ensemble.split(",") if m.strip()]
         if len(ensemble_model_names) < 2:
@@ -288,7 +344,7 @@ Examples:
             m_stems_dir = os.path.join(track_dir, f"stems_{m_tag}")
 
             m_stems = separate_stems_msst(
-                input_audio_path=final_original_wav,
+                input_audio_path=separation_input_wav,
                 output_folder=m_stems_dir,
                 model_preset=m_name,
                 chunk_size=args.chunk_size,
@@ -312,7 +368,7 @@ Examples:
         stems_dir = os.path.join(track_dir, f"stems_{clean_model_tag}")
 
         stems = separate_stems_msst(
-            input_audio_path=final_original_wav,
+            input_audio_path=separation_input_wav,
             output_folder=stems_dir,
             model_preset=norm_single_preset,
             config_path=args.config,
@@ -325,13 +381,18 @@ Examples:
         )
         model_display_name = norm_single_preset
 
-    # 9. Mix non-drum stems into drumless MP3
+    # If audience was separated in preprocessing, re-include the crowd stem in final drumless mix
+    if isolated_crowd_stem and os.path.exists(isolated_crowd_stem):
+        stems["crowd"] = isolated_crowd_stem
+        print(f"👥 Retaining crowd ambiance in drumless backing mix ({isolated_crowd_stem})")
+
+    # 10. Mix non-drum stems into drumless MP3
     out_mp3_path = os.path.join(track_dir, f"{safe_title} (Drumless).mp3")
 
     mix_stems_without_drums(stems, out_mp3_path)
     set_mp3_metadata(out_mp3_path, info, model_name=model_display_name)
 
-    # 10. Upload to YouTube Music if requested
+    # 11. Upload to YouTube Music if requested
     if args.upload_ytmusic:
         upload_drumless_track(out_mp3_path, auth_file=args.ytmusic_auth)
 
@@ -340,6 +401,8 @@ Examples:
     print(f"📁 Track Folder: {track_dir}")
     print(f"  🎵 Drumless MP3:   {out_mp3_path}")
     print(f"  🎙️ Original Audio:  {final_original_wav}")
+    if decrowded_wav and os.path.exists(decrowded_wav):
+        print(f"  👥 Decrowded Audio: {decrowded_wav}")
     print(f"  🎛️ Separated Stems: {stems_dir}\n")
 
     # Final cleanup to ensure no memory or background handles remain
